@@ -24,3 +24,4 @@ venv/
 # System
 .DS_Store
 .claude/
+.claude/
