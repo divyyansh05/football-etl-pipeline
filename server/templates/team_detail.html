@@ -1,0 +1,355 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ team_name }} - Football Data Pipeline{% endblock %}
+
+{% block head %}
+<style>
+    .team-header {
+        display: flex;
+        gap: 2rem;
+        align-items: flex-start;
+        margin-bottom: 2rem;
+    }
+
+    .team-badge {
+        width: 120px;
+        height: 120px;
+        background: linear-gradient(135deg, var(--accent) 0%, rgba(59,130,246,0.5) 100%);
+        border-radius: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 3rem;
+        flex-shrink: 0;
+    }
+
+    .team-info h1 { margin: 0 0 0.5rem 0; }
+
+    .team-meta {
+        display: flex;
+        gap: 1.5rem;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        flex-wrap: wrap;
+    }
+
+    .team-meta-item { display: flex; align-items: center; gap: 0.5rem; }
+
+    .league-badge {
+        background: rgba(34,197,94,0.2);
+        color: var(--success);
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .season-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .season-tab {
+        padding: 0.4rem 1rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.82rem;
+        transition: all 0.2s;
+    }
+
+    .season-tab:hover, .season-tab.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+
+    .season-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .season-stat-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .season-stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--accent);
+    }
+
+    .season-stat-label {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        margin-top: 0.25rem;
+    }
+
+    .squad-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+    }
+
+    .player-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .player-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+    }
+
+    .player-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.75rem;
+    }
+
+    .player-name { font-weight: 600; font-size: 1rem; }
+    .player-nationality { font-size: 0.8rem; color: var(--text-secondary); }
+
+    .position-badge {
+        background: rgba(59,130,246,0.2);
+        color: var(--accent);
+        padding: 0.2rem 0.6rem;
+        border-radius: 1rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .player-stats {
+        display: grid;
+        grid-template-columns: repeat(4,1fr);
+        gap: 0.5rem;
+        text-align: center;
+    }
+
+    .player-stat-value {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--accent);
+    }
+
+    .player-stat-label {
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+    }
+
+    .section-title { margin: 2rem 0 1rem 0; font-size: 1.25rem; }
+
+    .stats-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .summary-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        text-align: center;
+    }
+
+    .summary-value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+    .summary-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; }
+    .empty-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/teams" style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; margin-bottom: 1rem;">
+    <span>← Back to Teams</span>
+</a>
+
+<div class="team-header">
+    <div class="team-badge">🛡️</div>
+    <div class="team-info">
+        <h1>{{ team_name }}</h1>
+        <div class="team-meta">
+            <div class="team-meta-item">
+                <span class="league-badge" id="leagueBadge">Loading...</span>
+            </div>
+            <div class="team-meta-item">🏟️ <span id="stadiumVal">-</span></div>
+            <div class="team-meta-item">📅 Founded: <span id="foundedVal">-</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- Season Selector -->
+<h2 class="section-title">Season Data</h2>
+<div class="season-tabs" id="seasonTabs">
+    <span style="color: var(--text-secondary); font-size: 0.85rem;">Loading seasons…</span>
+</div>
+<div class="season-stats-grid" id="seasonStatsGrid" style="display:none;"></div>
+
+<!-- Squad Summary -->
+<div class="stats-summary" id="squadSummary">
+    <div class="summary-card"><div class="summary-value" id="totalPlayers">-</div><div class="summary-label">Players</div></div>
+    <div class="summary-card"><div class="summary-value" id="totalGoals">-</div><div class="summary-label">Total Goals</div></div>
+    <div class="summary-card"><div class="summary-value" id="totalAssists">-</div><div class="summary-label">Total Assists</div></div>
+    <div class="summary-card"><div class="summary-value" id="totalMinutes">-</div><div class="summary-label">Total Minutes</div></div>
+</div>
+
+<!-- Squad -->
+<h2 class="section-title">Squad</h2>
+<div class="squad-grid" id="squadContainer">
+    <div class="empty-state">Loading squad...</div>
+</div>
+
+<!-- Recent Matches -->
+<h2 class="section-title">Recent Matches</h2>
+<div class="card">
+    <table class="data-table" id="matchesTable">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Fixture</th>
+                <th style="text-align:center;">Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="3" class="empty-state">Loading matches...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const teamId = {{ team_id }};
+    const teamName = "{{ team_name }}";
+
+    async function fetchTeamDetails() {
+        try {
+            const response = await fetch(`/api/teams/${teamId}`);
+            if (!response.ok) throw new Error("Team not found");
+            const data = await response.json();
+
+            document.getElementById('leagueBadge').innerText = data.league || 'Unknown';
+            document.getElementById('stadiumVal').innerText = data.stadium || '-';
+            document.getElementById('foundedVal').innerText = data.founded || '-';
+
+            if (data.squad && data.squad.length > 0) {
+                document.getElementById('totalPlayers').innerText = data.squad.length;
+                document.getElementById('totalGoals').innerText = data.squad.reduce((s,p) => s + (p.goals||0), 0);
+                document.getElementById('totalAssists').innerText = data.squad.reduce((s,p) => s + (p.assists||0), 0);
+                document.getElementById('totalMinutes').innerText = data.squad.reduce((s,p) => s + (p.minutes||0), 0).toLocaleString();
+            }
+
+            const squadContainer = document.getElementById('squadContainer');
+            if (!data.squad || data.squad.length === 0) {
+                squadContainer.innerHTML = '<div class="empty-state">No player data available.</div>';
+            } else {
+                squadContainer.innerHTML = data.squad.map(p => `
+                    <div class="player-card" onclick="window.location.href='/players/${p.id}'">
+                        <div class="player-card-header">
+                            <div>
+                                <div class="player-name">${p.name}</div>
+                                <div class="player-nationality">${p.nationality || 'Unknown'}</div>
+                            </div>
+                            <span class="position-badge">${p.position || 'N/A'}</span>
+                        </div>
+                        <div class="player-stats">
+                            <div><div class="player-stat-value">${p.apps||0}</div><div class="player-stat-label">Apps</div></div>
+                            <div><div class="player-stat-value">${p.goals||0}</div><div class="player-stat-label">Goals</div></div>
+                            <div><div class="player-stat-value">${p.assists||0}</div><div class="player-stat-label">Assists</div></div>
+                            <div><div class="player-stat-value">${p.minutes ? Math.round(p.minutes/90) : 0}</div><div class="player-stat-label">90s</div></div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            const matchesBody = document.querySelector('#matchesTable tbody');
+            if (!data.recent_matches || data.recent_matches.length === 0) {
+                matchesBody.innerHTML = '<tr><td colspan="3" class="empty-state">No matches recorded.</td></tr>';
+            } else {
+                matchesBody.innerHTML = data.recent_matches.map(m => `
+                    <tr onclick="window.location.href='/matches/${m.id||'#'}'" style="cursor:pointer;">
+                        <td style="white-space:nowrap;">${m.date}</td>
+                        <td>
+                            <span style="${m.home_team===teamName?'font-weight:bold;color:var(--accent);':''}">${m.home_team}</span>
+                            <span style="color:var(--text-secondary);"> vs </span>
+                            <span style="${m.away_team===teamName?'font-weight:bold;color:var(--accent);':''}">${m.away_team}</span>
+                        </td>
+                        <td style="text-align:center; font-weight:700; color:var(--accent);">${m.score}</td>
+                    </tr>
+                `).join('');
+            }
+        } catch(e) {
+            document.getElementById('squadContainer').innerHTML = '<div class="empty-state">Failed to load team data.</div>';
+        }
+    }
+
+    async function fetchSeasons() {
+        try {
+            const res = await fetch(`/api/teams/${teamId}/seasons`);
+            const seasons = await res.json();
+
+            const tabsEl = document.getElementById('seasonTabs');
+            if (!seasons || seasons.length === 0) {
+                tabsEl.innerHTML = '<span style="color: var(--text-secondary); font-size: 0.85rem;">No season data available.</span>';
+                return;
+            }
+
+            tabsEl.innerHTML = seasons.map((s, i) => `
+                <button class="season-tab ${i===0?'active':''}" data-idx="${i}" onclick="showSeason(${i})">${s.season}</button>
+            `).join('');
+
+            window._teamSeasons = seasons;
+            showSeason(0);
+        } catch(e) {
+            document.getElementById('seasonTabs').innerHTML = '<span style="color:var(--text-secondary);">Season data unavailable.</span>';
+        }
+    }
+
+    function showSeason(idx) {
+        const seasons = window._teamSeasons || [];
+        const s = seasons[idx];
+        if (!s) return;
+
+        document.querySelectorAll('.season-tab').forEach((t, i) => {
+            t.classList.toggle('active', i === idx);
+        });
+
+        const grid = document.getElementById('seasonStatsGrid');
+        grid.style.display = 'grid';
+        const gd = s.goals_for - s.goals_against;
+        const gdStr = (gd >= 0 ? '+' : '') + gd;
+        grid.innerHTML = `
+            <div class="season-stat-card"><div class="season-stat-value">${s.matches_played}</div><div class="season-stat-label">Played</div></div>
+            <div class="season-stat-card"><div class="season-stat-value" style="color:var(--success);">${s.wins}</div><div class="season-stat-label">Wins</div></div>
+            <div class="season-stat-card"><div class="season-stat-value" style="color:#f59e0b;">${s.draws}</div><div class="season-stat-label">Draws</div></div>
+            <div class="season-stat-card"><div class="season-stat-value" style="color:var(--danger);">${s.losses}</div><div class="season-stat-label">Losses</div></div>
+            <div class="season-stat-card"><div class="season-stat-value">${s.goals_for}</div><div class="season-stat-label">GF</div></div>
+            <div class="season-stat-card"><div class="season-stat-value">${s.goals_against}</div><div class="season-stat-label">GA</div></div>
+            <div class="season-stat-card"><div class="season-stat-value" style="color:${gd>=0?'var(--success)':'var(--danger)'};">${gdStr}</div><div class="season-stat-label">GD</div></div>
+            <div class="season-stat-card"><div class="season-stat-value">${s.points !== null ? s.points : '—'}</div><div class="season-stat-label">Points</div></div>
+            <div class="season-stat-card"><div class="season-stat-value">${s.player_count}</div><div class="season-stat-label">Players</div></div>
+        `;
+    }
+
+    fetchTeamDetails();
+    fetchSeasons();
+</script>
+{% endblock %}

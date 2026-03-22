@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+
+{% block title %}Matches - Football Data Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Matches</h1>
+    <div style="color: var(--text-secondary);">
+        Recent fixtures and results
+    </div>
+</div>
+
+<div class="card">
+    <table class="data-table" id="matchesTable">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>League</th>
+                <th>Home</th>
+                <th>Score</th>
+                <th>Away</th>
+                <th>Venue</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Populated by JS -->
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function fetchMatches() {
+        try {
+            // Re-using the same API as dashboard for now
+            const response = await fetch('/api/matches');
+            const data = await response.json();
+
+            const tbody = document.querySelector('#matchesTable tbody');
+            tbody.innerHTML = data.map(m => `
+                <tr onclick="window.location.href='/matches/${m.id || '#'}'">
+                    <td>${m.date}</td>
+                    <td>${m.league}</td>
+                    <td style="text-align: right; font-weight: 600;">${m.home_team}</td>
+                    <td style="text-align: center; color: var(--accent); white-space: nowrap;">${m.score}</td>
+                    <td style="font-weight: 600;">${m.away_team}</td>
+                    <td style="color: var(--text-secondary);">${m.venue}</td>
+                </tr>
+            `).join('');
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No matches found.</td></tr>';
+            }
+        } catch (e) {
+            console.error("Failed to fetch matches", e);
+        }
+    }
+
+    fetchMatches();
+</script>
+{% endblock %}

@@ -1,0 +1,380 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ player_name }} - Football Data Pipeline{% endblock %}
+
+{% block head %}
+<style>
+    /* ── Player header ────────────────────────────────────────────── */
+    .player-header { display: flex; gap: 2rem; align-items: flex-start; margin-bottom: 2rem; }
+
+    .player-avatar {
+        width: 120px; height: 120px;
+        background: linear-gradient(135deg, var(--accent) 0%, rgba(59,130,246,0.5) 100%);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 3rem; font-weight: 700; color: white; flex-shrink: 0;
+    }
+
+    .player-info h1 { margin: 0 0 0.5rem 0; }
+
+    .player-meta { display: flex; gap: 1.5rem; color: var(--text-secondary); font-size: 0.9rem; flex-wrap: wrap; }
+    .player-meta-item { display: flex; align-items: center; gap: 0.5rem; }
+
+    .position-badge {
+        background: rgba(59,130,246,0.2);
+        color: var(--accent);
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    /* ── Career summary bar ───────────────────────────────────────── */
+    .career-bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 2rem;
+    }
+
+    .career-stat {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .career-stat-value { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+    .career-stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; margin-top: 0.2rem; }
+
+    /* ── Season card ──────────────────────────────────────────────── */
+    .season-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+        transition: border-color 0.2s;
+    }
+
+    .season-card.transfer-split {
+        border-left: 3px solid var(--accent);
+    }
+
+    /* ── Season card header row ───────────────────────────────────── */
+    .season-card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        flex-wrap: wrap;
+    }
+
+    .season-badge {
+        background: var(--accent);
+        color: white;
+        padding: 0.2rem 0.6rem;
+        border-radius: 0.375rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .league-badge {
+        background: rgba(255,255,255,0.08);
+        color: var(--text-secondary);
+        padding: 0.2rem 0.6rem;
+        border-radius: 0.375rem;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    .team-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        flex: 1;
+    }
+
+    .transfer-badge {
+        background: rgba(59,130,246,0.15);
+        border: 1px solid rgba(59,130,246,0.3);
+        color: #93c5fd;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        white-space: nowrap;
+    }
+
+    /* ── Stats section title ──────────────────────────────────────── */
+    .stats-section-title {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+        margin: 1rem 0 0.5rem 0;
+        padding-bottom: 0.25rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    /* ── Horizontal stat grid ─────────────────────────────────────── */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+    }
+
+    .stat-box {
+        background: rgba(255,255,255,0.05);
+        border-radius: 0.5rem;
+        padding: 0.6rem;
+        text-align: center;
+    }
+
+    .stat-box-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    .stat-box-value.accent  { color: var(--accent); }
+    .stat-box-value.xg      { color: #a78bfa; }
+    .stat-box-value.yellow  { color: #f59e0b; }
+    .stat-box-value.red     { color: var(--danger); }
+
+    .stat-box-label {
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        margin-top: 0.2rem;
+    }
+
+    /* ── Per-90 badge row ─────────────────────────────────────────── */
+    .per90-row {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 0.75rem;
+    }
+
+    .per90-badge {
+        background: rgba(139, 92, 246, 0.15);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        border-radius: 999px;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        color: #a78bfa;
+    }
+
+    .empty-state { text-align: center; padding: 3rem; color: var(--text-secondary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/players" style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; margin-bottom: 1rem;">
+    <span>← Back to Players</span>
+</a>
+
+<div class="player-header">
+    <div class="player-avatar" id="playerAvatar">?</div>
+    <div class="player-info">
+        <h1>{{ player_name }}</h1>
+        <div class="player-meta">
+            <div class="player-meta-item"><span class="position-badge" id="posBadge">Loading…</span></div>
+            <div class="player-meta-item">🌍 <span id="natVal">-</span></div>
+            <div class="player-meta-item">📅 <span id="dobVal">-</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- Career Summary Bar -->
+<h2 style="margin-bottom: 1rem;">Career Summary</h2>
+<div class="career-bar" id="careerBar">
+    <div class="career-stat"><div class="career-stat-value" id="cMatches">-</div><div class="career-stat-label">Matches</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cGoals">-</div><div class="career-stat-label">Goals</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cAssists">-</div><div class="career-stat-label">Assists</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cMinutes">-</div><div class="career-stat-label">Minutes</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cXG">-</div><div class="career-stat-label">Career xG</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cXA">-</div><div class="career-stat-label">Career xA</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cShots">-</div><div class="career-stat-label">Shots</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cYellow" style="color:#f59e0b;">-</div><div class="career-stat-label">Yellows</div></div>
+    <div class="career-stat"><div class="career-stat-value" id="cRed" style="color:var(--danger);">-</div><div class="career-stat-label">Reds</div></div>
+</div>
+
+<!-- Season Breakdown -->
+<h2 style="margin-bottom: 1rem;">Season Breakdown</h2>
+<div id="seasonContainer">
+    <div class="empty-state">Loading season stats…</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const playerId = {{ player_id }};
+
+    function fmt(v, dec=1) {
+        if (v === null || v === undefined) return '—';
+        if (dec === 0) return Number(v).toLocaleString();
+        return parseFloat(v).toFixed(dec);
+    }
+
+    async function fetchPlayerProfile() {
+        try {
+            const res = await fetch(`/api/players/${playerId}/full-profile`);
+            if (!res.ok) throw new Error("Player not found");
+            const data = await res.json();
+
+            const p = data.player || {};
+            document.getElementById('playerAvatar').innerText = p.name ? p.name.charAt(0).toUpperCase() : '?';
+            document.getElementById('posBadge').innerText = p.position || 'Unknown';
+            document.getElementById('natVal').innerText = p.nationality || '-';
+            document.getElementById('dobVal').innerText = p.dob || '-';
+
+            const c = data.career || {};
+            document.getElementById('cMatches').innerText = fmt(c.matches, 0);
+            document.getElementById('cGoals').innerText = fmt(c.goals, 0);
+            document.getElementById('cAssists').innerText = fmt(c.assists, 0);
+            document.getElementById('cMinutes').innerText = (c.minutes||0).toLocaleString();
+            document.getElementById('cXG').innerText = fmt(c.xg);
+            document.getElementById('cXA').innerText = fmt(c.xa);
+            document.getElementById('cShots').innerText = fmt(c.shots, 0);
+            document.getElementById('cYellow').innerText = fmt(c.yellow_cards, 0);
+            document.getElementById('cRed').innerText = fmt(c.red_cards, 0);
+
+            const container = document.getElementById('seasonContainer');
+            const seasons = data.seasons || [];
+            if (seasons.length === 0) {
+                container.innerHTML = '<div class="empty-state">No season statistics available.</div>';
+                return;
+            }
+
+            container.innerHTML = seasons.map(s => {
+                const isSplit = s.is_transfer_split;
+
+                const per90Html = s.minutes > 90 ? `
+                    <div class="per90-row">
+                        <span class="per90-badge">Goals/90: ${s.goals_per_90 !== null ? s.goals_per_90 : '—'}</span>
+                        <span class="per90-badge">xG/90: ${s.xg_per_90 !== null ? s.xg_per_90 : '—'}</span>
+                        <span class="per90-badge">xA/90: ${s.xa_per_90 !== null ? s.xa_per_90 : '—'}</span>
+                    </div>` : '';
+
+                return `
+                    <div class="season-card ${isSplit ? 'transfer-split' : ''}">
+
+                        <!-- Card header: season badge · league · team · transfer flag -->
+                        <div class="season-card-header">
+                            <span class="season-badge">${s.season}</span>
+                            <span class="league-badge">${s.league}</span>
+                            <span class="team-name">🛡️ ${s.team}</span>
+                            ${isSplit ? '<span class="transfer-badge">🔄 Mid-season transfer</span>' : ''}
+                        </div>
+
+                        <!-- Appearances -->
+                        <div class="stats-section-title">Appearances</div>
+                        <div class="stats-grid">
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.matches}</div>
+                                <div class="stat-box-label">Apps</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.starts}</div>
+                                <div class="stat-box-label">Starts</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${(s.minutes||0).toLocaleString()}</div>
+                                <div class="stat-box-label">Mins</div>
+                            </div>
+                        </div>
+
+                        <!-- Attack -->
+                        <div class="stats-section-title">Attack</div>
+                        <div class="stats-grid">
+                            <div class="stat-box">
+                                <div class="stat-box-value accent">${s.goals}</div>
+                                <div class="stat-box-label">Goals</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value accent">${s.assists}</div>
+                                <div class="stat-box-label">Assists</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.shots}</div>
+                                <div class="stat-box-label">Shots</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.shots_on_target}</div>
+                                <div class="stat-box-label">SoT</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.key_passes}</div>
+                                <div class="stat-box-label">Key Pass</div>
+                            </div>
+                        </div>
+
+                        <!-- xG Metrics -->
+                        <div class="stats-section-title">xG Metrics (Understat)</div>
+                        <div class="stats-grid">
+                            <div class="stat-box">
+                                <div class="stat-box-value xg">${fmt(s.xg)}</div>
+                                <div class="stat-box-label">xG</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value xg">${fmt(s.npxg)}</div>
+                                <div class="stat-box-label">npxG</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value xg">${fmt(s.xa)}</div>
+                                <div class="stat-box-label">xA</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value xg">${fmt(s.xg_chain)}</div>
+                                <div class="stat-box-label">xGChain</div>
+                            </div>
+                        </div>
+
+                        <!-- Per-90 badges -->
+                        ${per90Html}
+
+                        <!-- Discipline -->
+                        <div class="stats-section-title">Discipline</div>
+                        <div class="stats-grid">
+                            <div class="stat-box">
+                                <div class="stat-box-value yellow">${s.yellow_cards}</div>
+                                <div class="stat-box-label">Yellow</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value red">${s.red_cards}</div>
+                                <div class="stat-box-label">Red</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.tackles}</div>
+                                <div class="stat-box-label">Tackles</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.interceptions}</div>
+                                <div class="stat-box-label">Inter.</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-box-value">${s.dribbles}</div>
+                                <div class="stat-box-label">Dribbles</div>
+                            </div>
+                        </div>
+
+                    </div>
+                `;
+            }).join('');
+
+        } catch(e) {
+            console.error("Failed to fetch player profile", e);
+            document.getElementById('seasonContainer').innerHTML =
+                '<div class="empty-state">Failed to load player data.</div>';
+        }
+    }
+
+    fetchPlayerProfile();
+</script>
+{% endblock %}

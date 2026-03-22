@@ -1,0 +1,467 @@
+{% extends "layout.html" %}
+
+{% block title %}Players - Football Data Pipeline{% endblock %}
+
+{% block head %}
+<style>
+    .filter-bar {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .search-input {
+        flex: 1;
+        min-width: 200px;
+        padding: 0.75rem 1rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+
+    .filter-select {
+        padding: 0.75rem 1rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: 0.5rem;
+        font-size: 0.9rem;
+        min-width: 150px;
+    }
+
+    .player-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1rem;
+    }
+
+    .player-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .player-card:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    .player-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+
+    .player-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .player-meta {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .player-position {
+        background: rgba(59, 130, 246, 0.2);
+        color: var(--accent);
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .player-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+        text-align: center;
+    }
+
+    .stat-item {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 0.75rem 0.5rem;
+        border-radius: 0.5rem;
+    }
+
+    .stat-value {
+        font-weight: 700;
+        font-size: 1.25rem;
+        color: var(--accent);
+    }
+
+    .stat-label {
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .player-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .team-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .league-badge {
+        background: rgba(34, 197, 94, 0.2);
+        color: var(--success);
+        padding: 0.2rem 0.6rem;
+        border-radius: 0.25rem;
+        font-size: 0.7rem;
+    }
+
+    .results-count {
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        margin-bottom: 1rem;
+    }
+
+    .loading-state {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem;
+        color: var(--text-secondary);
+    }
+
+    .loading-state::after {
+        content: '';
+        width: 24px;
+        height: 24px;
+        border: 3px solid var(--border-color);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        margin-left: 0.75rem;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+
+    .sort-btn {
+        padding: 0.5rem 1rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+
+    .sort-btn:hover, .sort-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+
+    .sort-group {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .view-toggle {
+        display: flex;
+        gap: 0.25rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 0.25rem;
+    }
+
+    .view-btn {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        border-radius: 0.25rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .view-btn:hover, .view-btn.active {
+        background: var(--accent);
+        color: white;
+    }
+
+    /* Table view */
+    .table-view {
+        display: none;
+    }
+
+    .table-view.active {
+        display: block;
+    }
+
+    .grid-view.active {
+        display: grid;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Players</h1>
+    <div style="color: var(--text-secondary);">
+        Browse and search player statistics
+    </div>
+</div>
+
+<div class="filter-bar">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search players by name...">
+    <select class="filter-select" id="leagueFilter">
+        <option value="">All Leagues</option>
+    </select>
+    <select class="filter-select" id="positionFilter">
+        <option value="">All Positions</option>
+        <option value="Goalkeeper">Goalkeeper</option>
+        <option value="Defender">Defender</option>
+        <option value="Midfielder">Midfielder</option>
+        <option value="Attacker">Attacker</option>
+    </select>
+    <div class="sort-group">
+        <button class="sort-btn active" data-sort="goals">Goals</button>
+        <button class="sort-btn" data-sort="assists">Assists</button>
+        <button class="sort-btn" data-sort="minutes">Minutes</button>
+    </div>
+    <div class="view-toggle">
+        <button class="view-btn active" data-view="grid" title="Grid View">▦</button>
+        <button class="view-btn" data-view="table" title="Table View">☰</button>
+    </div>
+</div>
+
+<div class="results-count" id="resultsCount">Loading players...</div>
+
+<!-- Grid View -->
+<div class="player-grid grid-view active" id="playerGrid">
+    <div class="loading-state">Loading players...</div>
+</div>
+
+<!-- Table View -->
+<div class="card table-view" id="playerTableContainer">
+    <table class="data-table" id="playersTable">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Position</th>
+                <th>Team</th>
+                <th>League</th>
+                <th style="text-align: center;">Goals</th>
+                <th style="text-align: center;">Assists</th>
+                <th style="text-align: center;">Minutes</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentSort = 'goals';
+    let currentView = 'grid';
+    let allPlayers = [];
+
+    // Populate league filter
+    async function loadFilters() {
+        try {
+            const response = await fetch('/api/leagues');
+            const leagues = await response.json();
+
+            const select = document.getElementById('leagueFilter');
+            leagues.forEach(l => {
+                const option = document.createElement('option');
+                option.value = l.name;
+                option.textContent = `${l.name} (${l.teams} teams)`;
+                select.appendChild(option);
+            });
+        } catch (e) {
+            console.error("Failed to load leagues", e);
+        }
+    }
+
+    async function fetchPlayers() {
+        const search = document.getElementById('searchInput').value;
+        const league = document.getElementById('leagueFilter').value;
+        const position = document.getElementById('positionFilter').value;
+
+        try {
+            const params = new URLSearchParams();
+            if (search) params.append('q', search);
+            if (league) params.append('league', league);
+            if (position) params.append('position', position);
+
+            const url = `/api/players?${params}`;
+            const response = await fetch(url);
+            allPlayers = await response.json();
+
+            // Sort players
+            sortPlayers();
+            renderPlayers();
+        } catch (e) {
+            console.error("Failed to fetch players", e);
+            document.getElementById('playerGrid').innerHTML = '<div class="empty-state"><div class="empty-state-icon">❌</div><p>Failed to load players</p></div>';
+        }
+    }
+
+    function sortPlayers() {
+        allPlayers.sort((a, b) => {
+            if (currentSort === 'goals') return (b.goals || 0) - (a.goals || 0);
+            if (currentSort === 'assists') return (b.assists || 0) - (a.assists || 0);
+            if (currentSort === 'minutes') return (b.minutes || 0) - (a.minutes || 0);
+            return 0;
+        });
+    }
+
+    function renderPlayers() {
+        document.getElementById('resultsCount').textContent = `${allPlayers.length} players found`;
+
+        if (allPlayers.length === 0) {
+            document.getElementById('playerGrid').innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><p>No players found matching your criteria</p></div>';
+            document.querySelector('#playersTable tbody').innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">No players found</td></tr>';
+            return;
+        }
+
+        // Grid view
+        const gridHtml = allPlayers.map(p => `
+            <div class="player-card" onclick="window.location.href='/players/${p.id}'">
+                <div class="player-header">
+                    <div>
+                        <div class="player-name">${p.name}</div>
+                        <div class="player-meta">${p.nationality || 'Unknown'}</div>
+                    </div>
+                    <span class="player-position">${p.position || 'N/A'}</span>
+                </div>
+                <div class="player-stats">
+                    <div class="stat-item">
+                        <div class="stat-value">${p.goals || 0}</div>
+                        <div class="stat-label">Goals</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${p.assists || 0}</div>
+                        <div class="stat-label">Assists</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${p.minutes ? Math.round(p.minutes / 90) : 0}</div>
+                        <div class="stat-label">90s</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${p.seasons || 0}</div>
+                        <div class="stat-label">Seasons</div>
+                    </div>
+                </div>
+                <div class="player-footer">
+                    <div class="team-badge">
+                        🛡️ ${p.team || 'Unknown'}
+                    </div>
+                    ${p.league ? `<span class="league-badge">${p.league}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+
+        document.getElementById('playerGrid').innerHTML = gridHtml;
+
+        // Table view
+        const tableHtml = allPlayers.map(p => `
+            <tr onclick="window.location.href='/players/${p.id}'">
+                <td style="font-weight: 500;">${p.name}</td>
+                <td><span class="player-position">${p.position || 'N/A'}</span></td>
+                <td>${p.team || '-'}</td>
+                <td>${p.league || '-'}</td>
+                <td style="text-align: center; font-weight: 600; color: var(--accent);">${p.goals || 0}</td>
+                <td style="text-align: center; font-weight: 600;">${p.assists || 0}</td>
+                <td style="text-align: center;">${p.minutes?.toLocaleString() || 0}</td>
+            </tr>
+        `).join('');
+
+        document.querySelector('#playersTable tbody').innerHTML = tableHtml;
+    }
+
+    // Sort button handlers
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentSort = btn.dataset.sort;
+            sortPlayers();
+            renderPlayers();
+        });
+    });
+
+    // View toggle handlers
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentView = btn.dataset.view;
+
+            const grid = document.getElementById('playerGrid');
+            const table = document.getElementById('playerTableContainer');
+
+            if (currentView === 'grid') {
+                grid.classList.add('active');
+                table.classList.remove('active');
+            } else {
+                grid.classList.remove('active');
+                table.classList.add('active');
+            }
+        });
+    });
+
+    // Search debounce
+    let debounceTimer;
+    document.getElementById('searchInput').addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchPlayers, 300);
+    });
+
+    // Filter change handlers
+    document.getElementById('leagueFilter').addEventListener('change', fetchPlayers);
+    document.getElementById('positionFilter').addEventListener('change', fetchPlayers);
+
+    // Initial load
+    loadFilters();
+    fetchPlayers();
+</script>
+{% endblock %}

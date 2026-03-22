@@ -1,0 +1,436 @@
+{% extends "layout.html" %}
+{% block title %}Data Coverage - Football Data Pipeline{% endblock %}
+
+{% block head %}
+<style>
+    .coverage-league-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+    }
+
+    .coverage-league-name {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        color: var(--text-primary);
+    }
+
+    .metric-row {
+        margin-bottom: 0.75rem;
+    }
+
+    .metric-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .metric-label { color: var(--text-secondary); }
+
+    .metric-pct {
+        font-weight: 600;
+        font-size: 0.8rem;
+    }
+
+    .pct-high   { color: var(--success); }
+    .pct-medium { color: #f59e0b; }
+    .pct-low    { color: var(--danger); }
+
+    .metric-bar {
+        height: 5px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .metric-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.6s ease;
+    }
+
+    .bar-high   { background: var(--success); }
+    .bar-medium { background: #f59e0b; }
+    .bar-low    { background: var(--danger); }
+
+    .season-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .season-tab {
+        padding: 0.3rem 0.8rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+
+    .season-tab:hover, .season-tab.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+
+    .league-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+
+    .warning-card {
+        background: rgba(239,68,68,0.07);
+        border: 1px solid rgba(239,68,68,0.25);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+    }
+
+    .warning-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--danger);
+        margin-bottom: 0.75rem;
+    }
+
+    .warning-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 1rem;
+    }
+
+    .warning-count {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--danger);
+    }
+
+    .warning-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+    }
+
+    .badge-transfer {
+        background: rgba(59,130,246,0.2);
+        color: var(--accent);
+        padding: 0.2rem 0.5rem;
+        border-radius: 1rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .badge-duplicate {
+        background: rgba(239,68,68,0.2);
+        color: var(--danger);
+        padding: 0.2rem 0.5rem;
+        border-radius: 1rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .note-box {
+        background: rgba(59,130,246,0.07);
+        border: 1px solid rgba(59,130,246,0.2);
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+    }
+
+    .summary-strip {
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.25rem;
+        padding: 1rem 1.25rem;
+        background: rgba(255,255,255,0.03);
+        border-radius: 0.5rem;
+        border: 1px solid var(--border-color);
+    }
+
+    .summary-strip-item { text-align: center; }
+    .summary-strip-value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+    .summary-strip-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; }
+
+    .empty-state { text-align: center; padding: 2rem; color: var(--text-secondary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📊 Data Coverage Report</h1>
+    <div style="color: var(--text-secondary);">Completeness analysis across all leagues and seasons</div>
+</div>
+
+<!-- Season filter tabs -->
+<div class="season-tabs" id="seasonTabs"></div>
+
+<!-- SECTION A: Player Coverage -->
+<h2 style="margin-bottom: 1rem;">Player Data Coverage</h2>
+<div class="league-grid" id="playerCoverageGrid">
+    <div class="empty-state">Loading...</div>
+</div>
+
+<!-- SECTION B: Team Coverage -->
+<h2 style="margin: 2rem 0 1rem;">Team Data Coverage</h2>
+<div class="card" style="padding: 0;">
+    <table class="data-table" id="teamCoverageTable">
+        <thead>
+            <tr>
+                <th>League</th>
+                <th>Season</th>
+                <th>Total Teams</th>
+                <th>With Matches</th>
+                <th>Coverage</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- SECTION: Missing Data -->
+<h2 style="margin: 2rem 0 1rem;">⚠️ Missing Data</h2>
+<div class="warning-grid" id="missingGrid">
+    <div class="empty-state">Loading...</div>
+</div>
+
+<!-- SECTION C: Duplicates -->
+<h2 style="margin: 2rem 0 1rem;">Duplicate Analysis</h2>
+<div class="note-box">
+    ℹ️ <strong>Transfer Splits</strong> are expected and correct — a player who moved mid-season gets one row per team. Only <strong>True Duplicates</strong> (same player, same team, same season appearing more than once) indicate a data problem.
+</div>
+<div class="summary-strip" id="dupSummary" style="display:none;">
+    <div class="summary-strip-item">
+        <div class="summary-strip-value" id="dupTotal">0</div>
+        <div class="summary-strip-label">Total Flagged</div>
+    </div>
+    <div class="summary-strip-item">
+        <div class="summary-strip-value" id="dupTransfer" style="color: var(--accent);">0</div>
+        <div class="summary-strip-label">Transfer Splits</div>
+    </div>
+    <div class="summary-strip-item">
+        <div class="summary-strip-value" id="dupTrue" style="color: var(--danger);">0</div>
+        <div class="summary-strip-label">True Duplicates</div>
+    </div>
+</div>
+<div class="card" style="padding: 0;">
+    <table class="data-table" id="dupTable">
+        <thead>
+            <tr>
+                <th>Player</th>
+                <th>Season</th>
+                <th>League</th>
+                <th style="text-align:center;">Records</th>
+                <th style="text-align:center;">Teams</th>
+                <th>Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="6" class="empty-state">Loading duplicates...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allPlayerCoverage = [];
+let allTeamCoverage = [];
+let activeSeason = null;
+
+function pctClass(pct) {
+    return pct >= 80 ? 'high' : pct >= 50 ? 'medium' : 'low';
+}
+
+function renderPlayerCards(data) {
+    const grid = document.getElementById('playerCoverageGrid');
+    if (!data || data.length === 0) {
+        grid.innerHTML = '<div class="empty-state">No player coverage data.</div>';
+        return;
+    }
+
+    grid.innerHTML = data.map(row => {
+        const cls = pctClass(row.coverage_pct);
+        const metrics = [
+            { label: 'Players with minutes', val: row.with_minutes, total: row.total },
+            { label: 'Players with xG (Understat)', val: row.with_xg, total: row.total },
+            { label: 'Players with goals data', val: row.with_goals, total: row.total },
+            { label: 'Players with shots', val: row.with_shots, total: row.total },
+        ];
+        return `
+            <div class="coverage-league-card">
+                <div class="coverage-league-name">🛡️ ${row.league}
+                    <span style="font-weight:400; color: var(--text-secondary); font-size:0.8rem;">• ${row.season}</span>
+                </div>
+                <div style="margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text-secondary);">
+                    ${row.total.toLocaleString()} total records
+                </div>
+                ${metrics.map(m => {
+                    const pct = m.total > 0 ? Math.round(m.val / m.total * 100) : 0;
+                    const mc = pctClass(pct);
+                    return `
+                        <div class="metric-row">
+                            <div class="metric-header">
+                                <span class="metric-label">${m.label}</span>
+                                <span class="metric-pct pct-${mc}">${pct}%</span>
+                            </div>
+                            <div class="metric-bar">
+                                <div class="metric-bar-fill bar-${mc}" style="width:${pct}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }).join('');
+}
+
+function renderTeamTable(data) {
+    const tbody = document.querySelector('#teamCoverageTable tbody');
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No team coverage data.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = data.map(row => {
+        const cls = pctClass(row.coverage_pct);
+        return `
+            <tr>
+                <td style="font-weight:500;">${row.league}</td>
+                <td style="color: var(--text-secondary);">${row.season}</td>
+                <td>${row.total}</td>
+                <td>${row.with_matches}</td>
+                <td>
+                    <span class="metric-pct pct-${cls}">${row.coverage_pct}%</span>
+                    <div class="metric-bar" style="width: 120px; margin-top: 4px;">
+                        <div class="metric-bar-fill bar-${cls}" style="width:${row.coverage_pct}%"></div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function applySeasonFilter(season) {
+    activeSeason = season;
+    document.querySelectorAll('.season-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.season === season);
+    });
+
+    const filtered = season === '__all__'
+        ? allPlayerCoverage
+        : allPlayerCoverage.filter(r => r.season === season);
+    renderPlayerCards(filtered);
+
+    const filteredTeam = season === '__all__'
+        ? allTeamCoverage
+        : allTeamCoverage.filter(r => r.season === season);
+    renderTeamTable(filteredTeam);
+}
+
+async function loadCoverage() {
+    try {
+        const res = await fetch('/api/coverage');
+        const data = await res.json();
+
+        allPlayerCoverage = data.player_coverage || [];
+        allTeamCoverage = data.team_coverage || [];
+
+        // Build season tabs
+        const seasons = [...new Set(allPlayerCoverage.map(r => r.season))].sort().reverse();
+        const tabContainer = document.getElementById('seasonTabs');
+        tabContainer.innerHTML = `
+            <button class="season-tab active" data-season="__all__" onclick="applySeasonFilter('__all__')">All Seasons</button>
+            ${seasons.map(s => `
+                <button class="season-tab" data-season="${s}" onclick="applySeasonFilter('${s}')">${s}</button>
+            `).join('')}
+        `;
+
+        renderPlayerCards(allPlayerCoverage);
+        renderTeamTable(allTeamCoverage);
+
+        // Missing data
+        const missingGrid = document.getElementById('missingGrid');
+        const missing = data.missing || [];
+        if (missing.length === 0) {
+            missingGrid.innerHTML = '<div class="empty-state">No missing data issues.</div>';
+        } else {
+            missingGrid.innerHTML = missing.map(m => `
+                <div class="warning-card">
+                    <div class="warning-title">⚠️ ${m.league}</div>
+                    <div style="display:grid; grid-template-columns: repeat(3,1fr); gap: 0.5rem; text-align: center;">
+                        <div>
+                            <div class="warning-count">${m.no_minutes.toLocaleString()}</div>
+                            <div class="warning-label">No minutes</div>
+                        </div>
+                        <div>
+                            <div class="warning-count">${m.no_xg.toLocaleString()}</div>
+                            <div class="warning-label">No xG</div>
+                        </div>
+                        <div>
+                            <div class="warning-count">${m.no_goals.toLocaleString()}</div>
+                            <div class="warning-label">No goals data</div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.75rem; color: var(--text-secondary); margin-top: 0.5rem; text-align: center;">
+                        ${m.total.toLocaleString()} total records
+                    </div>
+                </div>
+            `).join('');
+        }
+    } catch(e) {
+        document.getElementById('playerCoverageGrid').innerHTML =
+            `<div class="empty-state">Error loading coverage: ${e.message}</div>`;
+    }
+}
+
+async function loadDuplicates() {
+    try {
+        const res = await fetch('/api/coverage/duplicates');
+        const data = await res.json();
+
+        document.getElementById('dupTotal').textContent = data.total;
+        document.getElementById('dupTransfer').textContent = data.transfer_splits;
+        document.getElementById('dupTrue').textContent = data.true_duplicates;
+        document.getElementById('dupSummary').style.display = 'flex';
+
+        const tbody = document.querySelector('#dupTable tbody');
+        if (!data.duplicates || data.duplicates.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No duplicates found. ✅</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.duplicates.map(d => `
+            <tr>
+                <td style="font-weight:500;">${d.player}</td>
+                <td style="color: var(--text-secondary);">${d.season}</td>
+                <td>${d.league}</td>
+                <td style="text-align:center;">${d.record_count}</td>
+                <td style="text-align:center;">${d.team_count}</td>
+                <td>
+                    ${d.type === 'Transfer Split'
+                        ? '<span class="badge-transfer">Transfer Split</span>'
+                        : '<span class="badge-duplicate">True Duplicate</span>'}
+                </td>
+            </tr>
+        `).join('');
+    } catch(e) {
+        document.querySelector('#dupTable tbody').innerHTML =
+            `<tr><td colspan="6" class="empty-state">Error: ${e.message}</td></tr>`;
+    }
+}
+
+loadCoverage();
+loadDuplicates();
+</script>
+{% endblock %}

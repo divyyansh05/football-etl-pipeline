@@ -1,0 +1,112 @@
+{% extends "layout.html" %}
+
+{% block title %}Match Detail - Football Data Pipeline{% endblock %}
+
+{% block content %}
+<a href="/matches"
+    style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; margin-bottom: 1rem;">
+    <span>← Back to Matches</span>
+</a>
+
+<div class="card" style="text-align: center; margin-bottom: 2rem;">
+    <div style="color: var(--text-secondary); margin-bottom: 0.5rem;" id="matchDate">-</div>
+    <div style="color: var(--accent); font-weight: 600; margin-bottom: 1rem;" id="leagueName">-</div>
+
+    <div style="display: flex; justify-content: center; align-items: center; gap: 2rem; margin-bottom: 1rem;">
+        <div style="flex: 1; text-align: right;">
+            <h2 id="homeTeam" style="margin:0;">-</h2>
+        </div>
+        <div
+            style="background: #0f172a; padding: 1rem 2rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
+            <h1 id="score" style="margin:0; font-size: 3rem;">-</h1>
+        </div>
+        <div style="flex: 1; text-align: left;">
+            <h2 id="awayTeam" style="margin:0;">-</h2>
+        </div>
+    </div>
+
+    <div style="color: var(--text-secondary);" id="venue">-</div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap: 2rem;">
+    <!-- Home Lineup -->
+    <div class="card">
+        <h3 id="homeLabel">Home Lineup</h3>
+        <table class="data-table" id="homeTable">
+            <thead>
+                <tr>
+                    <th>Player</th>
+                    <th>Min</th>
+                    <th>Stats</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- Away Lineup -->
+    <div class="card">
+        <h3 id="awayLabel">Away Lineup</h3>
+        <table class="data-table" id="awayTable">
+            <thead>
+                <tr>
+                    <th>Player</th>
+                    <th>Min</th>
+                    <th>Stats</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const matchId = {{ match_id }};
+
+    function renderPlayerRow(p) {
+        return `
+            <tr onclick="window.location.href='/players/${p.id}'">
+                <td style="font-weight: 500;">${p.name}</td>
+                <td>${p.mins}'</td>
+                <td>
+                    ${p.goals > 0 ? `<span style="color: var(--success)">${p.goals}G</span>` : ''}
+                    ${p.assists > 0 ? `<span style="color: var(--accent)">${p.assists}A</span>` : ''}
+                </td>
+            </tr>
+        `;
+    }
+
+    async function fetchMatchDetails() {
+        try {
+            const response = await fetch(`/api/matches/${matchId}`);
+            if (!response.ok) throw new Error("Match not found");
+            const data = await response.json();
+
+            // Header
+            document.getElementById('matchDate').innerText = data.date;
+            document.getElementById('leagueName').innerText = data.league;
+            document.getElementById('homeTeam').innerText = data.home_team.name;
+            document.getElementById('awayTeam').innerText = data.away_team.name;
+            document.getElementById('score').innerText = data.score;
+            document.getElementById('venue').innerText = data.venue || 'Unknown Venue';
+
+            // Lineups
+            document.getElementById('homeLabel').innerText = data.home_team.name;
+            document.getElementById('awayLabel').innerText = data.away_team.name;
+
+            document.querySelector('#homeTable tbody').innerHTML = data.home_lineup && data.home_lineup.length ?
+                data.home_lineup.map(renderPlayerRow).join('') : '<tr><td colspan="3">No stats available</td></tr>';
+
+            document.querySelector('#awayTable tbody').innerHTML = data.away_lineup && data.away_lineup.length ?
+                data.away_lineup.map(renderPlayerRow).join('') : '<tr><td colspan="3">No stats available</td></tr>';
+
+        } catch (e) {
+            console.error("Failed to fetch match details", e);
+        }
+    }
+
+    fetchMatchDetails();
+</script>
+{% endblock %}

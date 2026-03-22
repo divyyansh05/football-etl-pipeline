@@ -1,0 +1,286 @@
+{% extends "layout.html" %}
+{% block title %}Pipeline Monitor - Football Data Pipeline{% endblock %}
+
+{% block head %}
+<style>
+    .status-badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .status-active   { background: rgba(34,197,94,0.2);  color: var(--success); }
+    .status-idle     { background: rgba(148,163,184,0.2); color: var(--text-secondary); }
+    .status-success  { background: rgba(34,197,94,0.2);  color: var(--success); }
+    .status-failed   { background: rgba(239,68,68,0.2);  color: var(--danger); }
+    .status-started  { background: rgba(59,130,246,0.2); color: var(--accent); }
+
+    .source-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.375rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        background: rgba(59,130,246,0.15);
+        color: var(--accent);
+    }
+
+    .freshness-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 1rem;
+    }
+
+    .freshness-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1rem;
+    }
+
+    .freshness-league {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+    }
+
+    .freshness-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        padding: 0.2rem 0;
+        color: var(--text-secondary);
+    }
+
+    .freshness-row span { color: var(--text-primary); font-weight: 500; }
+
+    .matchday-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .matchday-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .scheduler-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.4rem 1rem;
+        border-radius: 1rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+
+    .scheduler-on  { background: rgba(34,197,94,0.15); color: var(--success); border: 1px solid rgba(34,197,94,0.3); }
+    .scheduler-off { background: rgba(148,163,184,0.1); color: var(--text-secondary); border: 1px solid var(--border-color); }
+
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-green { background: var(--success); animation: pulse 2s infinite; }
+    .dot-grey  { background: var(--text-secondary); }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    .empty-state { text-align: center; padding: 2rem; color: var(--text-secondary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>⚙ Pipeline Monitor</h1>
+    <div id="schedulerStatus" class="scheduler-indicator scheduler-off">
+        <div class="dot dot-grey"></div> Checking...
+    </div>
+</div>
+
+<!-- Job Schedule Table -->
+<h2 style="margin-bottom: 1rem;">Scheduled Jobs</h2>
+<div class="card" style="padding: 0;">
+    <table class="data-table" id="jobsTable">
+        <thead>
+            <tr>
+                <th>Job ID</th>
+                <th>Source</th>
+                <th>Schedule</th>
+                <th>Next Run</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="5" class="empty-state">Loading jobs...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Recent Runs -->
+<h2 style="margin: 2rem 0 1rem;">Recent Runs</h2>
+<div class="card" style="padding: 0;">
+    <table class="data-table" id="runsTable">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Job</th>
+                <th>Status</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="4" class="empty-state">Loading run history...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Data Freshness -->
+<h2 style="margin: 2rem 0 1rem;">Data Freshness</h2>
+<div id="freshnessContainer">
+    <div class="empty-state">Loading freshness data...</div>
+</div>
+
+<!-- Last Matchday -->
+<h2 style="margin: 2rem 0 1rem;">Last Matchday per League</h2>
+<div class="matchday-grid" id="matchdayContainer">
+    <div class="empty-state">Loading...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadJobs() {
+    try {
+        const res = await fetch('/api/pipeline/jobs');
+        const data = await res.json();
+
+        const indicator = document.getElementById('schedulerStatus');
+        if (data.scheduler_running) {
+            indicator.className = 'scheduler-indicator scheduler-on';
+            indicator.innerHTML = '<div class="dot dot-green"></div> Scheduler Running';
+        } else {
+            indicator.className = 'scheduler-indicator scheduler-off';
+            indicator.innerHTML = '<div class="dot dot-grey"></div> Scheduler Offline';
+        }
+
+        const tbody = document.querySelector('#jobsTable tbody');
+        if (!data.jobs || data.jobs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No job data found.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.jobs.map(j => `
+            <tr>
+                <td style="font-family: monospace; font-size: 0.85rem;">${j.id}</td>
+                <td><span class="source-badge">${j.source}</span></td>
+                <td style="color: var(--text-secondary); font-size: 0.85rem;">${j.schedule}</td>
+                <td style="color: var(--text-secondary); font-size: 0.85rem;">${j.next_run || '—'}</td>
+                <td>
+                    ${j.is_scheduled
+                        ? '<span class="status-badge status-active">Scheduled</span>'
+                        : '<span class="status-badge status-idle">Not Loaded</span>'}
+                </td>
+            </tr>
+        `).join('');
+    } catch(e) {
+        document.querySelector('#jobsTable tbody').innerHTML =
+            `<tr><td colspan="5" class="empty-state">Error: ${e.message}</td></tr>`;
+    }
+}
+
+async function loadRuns() {
+    try {
+        const res = await fetch('/api/pipeline/runs');
+        const data = await res.json();
+
+        const tbody = document.querySelector('#runsTable tbody');
+        if (!data.runs || data.runs.length === 0) {
+            const note = data.note || data.error || 'No run history found in scheduler.log';
+            tbody.innerHTML = `<tr><td colspan="4" class="empty-state">${note}</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.runs.map(r => `
+            <tr>
+                <td style="font-size: 0.8rem; white-space: nowrap; color: var(--text-secondary);">${r.timestamp}</td>
+                <td style="font-size: 0.85rem; font-family: monospace;">${r.job}</td>
+                <td>
+                    <span class="status-badge status-${r.status}">${r.status}</span>
+                </td>
+                <td style="font-size: 0.75rem; color: var(--text-secondary); max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                    title="${r.message}">${r.message}</td>
+            </tr>
+        `).join('');
+    } catch(e) {
+        document.querySelector('#runsTable tbody').innerHTML =
+            `<tr><td colspan="4" class="empty-state">Error: ${e.message}</td></tr>`;
+    }
+}
+
+async function loadFreshness() {
+    try {
+        const res = await fetch('/api/pipeline/latest-data');
+        const data = await res.json();
+
+        // Group freshness by league
+        const byLeague = {};
+        (data.freshness || []).forEach(row => {
+            if (!byLeague[row.league]) byLeague[row.league] = [];
+            byLeague[row.league].push(row);
+        });
+
+        const container = document.getElementById('freshnessContainer');
+        if (Object.keys(byLeague).length === 0) {
+            container.innerHTML = '<div class="empty-state">No data found.</div>';
+        } else {
+            container.innerHTML = `<div class="freshness-grid">${
+                Object.entries(byLeague).map(([league, rows]) => `
+                    <div class="freshness-card">
+                        <div class="freshness-league">🛡️ ${league}</div>
+                        ${rows.map(r => `
+                            <div class="freshness-row">
+                                <span>${r.season}</span>
+                                <span>${r.record_count.toLocaleString()} records</span>
+                            </div>
+                            <div class="freshness-row">
+                                <span>Last update</span>
+                                <span>${r.last_updated ? r.last_updated.slice(0,10) : '—'}</span>
+                            </div>
+                        `).join('<hr style="border:none; border-top: 1px solid var(--border-color); margin: 0.4rem 0;">')}
+                    </div>
+                `).join('')
+            }</div>`;
+        }
+
+        // Matchday
+        const matchday = document.getElementById('matchdayContainer');
+        if (!data.last_matchday || data.last_matchday.length === 0) {
+            matchday.innerHTML = '<div class="empty-state">No match data.</div>';
+        } else {
+            matchday.innerHTML = data.last_matchday.map(m => `
+                <div class="matchday-card">
+                    <span style="font-weight:500;">${m.league}</span>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">${m.last_match || '—'}</span>
+                </div>
+            `).join('');
+        }
+    } catch(e) {
+        document.getElementById('freshnessContainer').innerHTML =
+            `<div class="empty-state">Error: ${e.message}</div>`;
+    }
+}
+
+loadJobs();
+loadRuns();
+loadFreshness();
+</script>
+{% endblock %}

@@ -1,0 +1,26 @@
+# Environment
+.env
+
+# Logs
+*.log
+logs/
+server.log
+
+# Data
+data/cache/
+data/scheduler_jobs.db
+downloaded_files/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv311/
+venv/
+*.egg-info/
+.eggs/
+
+# System
+.DS_Store
+.claude/

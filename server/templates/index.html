@@ -1,0 +1,999 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - Football Data Pipeline{% endblock %}
+
+{% block head %}
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        background: linear-gradient(135deg, var(--card-bg) 0%, rgba(59, 130, 246, 0.1) 100%);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        border: 1px solid var(--border-color);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--accent);
+        line-height: 1.2;
+    }
+
+    .stat-label {
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 0.25rem;
+    }
+
+    .stat-change {
+        font-size: 0.75rem;
+        margin-top: 0.5rem;
+    }
+
+    .stat-change.positive { color: var(--success); }
+    .stat-change.negative { color: var(--danger); }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 2rem 0 1rem 0;
+    }
+
+    .section-header h2 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+
+    .tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .tab-btn {
+        padding: 0.5rem 1rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+        transition: all 0.2s;
+    }
+
+    .tab-btn:hover, .tab-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+
+    .two-column {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+    }
+
+    @media (max-width: 1200px) {
+        .two-column {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .league-card {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .league-card:hover {
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .league-card:last-child {
+        border-bottom: none;
+    }
+
+    .league-info {
+        flex: 1;
+    }
+
+    .league-name {
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+    }
+
+    .league-country {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .league-stats {
+        text-align: right;
+    }
+
+    .league-stat {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .league-stat span {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    .progress-bar {
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+        margin-top: 0.5rem;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: var(--accent);
+        border-radius: 2px;
+        transition: width 0.5s ease;
+    }
+
+    .player-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto auto;
+        gap: 1rem;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .player-row:hover {
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .player-rank {
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(59, 130, 246, 0.2);
+        border-radius: 50%;
+        font-weight: 600;
+        font-size: 0.8rem;
+        color: var(--accent);
+    }
+
+    .player-rank.gold { background: rgba(255, 215, 0, 0.2); color: #ffd700; }
+    .player-rank.silver { background: rgba(192, 192, 192, 0.2); color: #c0c0c0; }
+    .player-rank.bronze { background: rgba(205, 127, 50, 0.2); color: #cd7f32; }
+
+    .player-info {
+        min-width: 0;
+    }
+
+    .player-name {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .player-meta {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .player-stat {
+        text-align: center;
+        min-width: 60px;
+    }
+
+    .player-stat-value {
+        font-weight: 700;
+        font-size: 1.1rem;
+    }
+
+    .player-stat-label {
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+    }
+
+    .month-bar {
+        display: flex;
+        align-items: flex-end;
+        gap: 4px;
+        height: 100px;
+        padding: 1rem;
+    }
+
+    .month-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .month-bar-fill {
+        width: 100%;
+        background: var(--accent);
+        border-radius: 2px 2px 0 0;
+        min-height: 4px;
+        transition: height 0.5s ease;
+    }
+
+    .month-label {
+        font-size: 0.65rem;
+        color: var(--text-secondary);
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        transform: rotate(180deg);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+
+    .filter-row {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .filter-select {
+        padding: 0.5rem 1rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        min-width: 150px;
+    }
+
+    .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        color: var(--text-secondary);
+    }
+
+    .loading::after {
+        content: '';
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        margin-left: 0.5rem;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Data Health Styles */
+    .health-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .health-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .health-score {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .score-circle {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.75rem;
+        font-weight: 700;
+        position: relative;
+    }
+
+    .score-circle.excellent { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 3px solid var(--success); }
+    .score-circle.good { background: rgba(59, 130, 246, 0.2); color: var(--accent); border: 3px solid var(--accent); }
+    .score-circle.warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 3px solid #f59e0b; }
+    .score-circle.poor { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 3px solid var(--danger); }
+
+    .health-issues {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    .health-issue {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .health-issue.warning { border-left: 3px solid #f59e0b; }
+    .health-issue.info { border-left: 3px solid var(--accent); }
+    .health-issue.error { border-left: 3px solid var(--danger); }
+
+    .health-issue-icon {
+        font-size: 1.1rem;
+    }
+
+    .coverage-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .coverage-item {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 1rem;
+        border-radius: 0.5rem;
+    }
+
+    .coverage-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
+    .coverage-item-name {
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    .coverage-item-pct {
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+
+    .coverage-item-pct.high { color: var(--success); }
+    .coverage-item-pct.medium { color: #f59e0b; }
+    .coverage-item-pct.low { color: var(--danger); }
+
+    .coverage-bar {
+        height: 6px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .coverage-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.5s ease;
+    }
+
+    .coverage-bar-fill.high { background: var(--success); }
+    .coverage-bar-fill.medium { background: #f59e0b; }
+    .coverage-bar-fill.low { background: var(--danger); }
+
+    .health-meta {
+        display: flex;
+        gap: 2rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .health-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .health-meta-item span {
+        color: var(--text-primary);
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <div style="color: var(--text-secondary);">
+        Football Data Pipeline Overview
+    </div>
+</div>
+
+<!-- Data Health Section -->
+<div class="section-header">
+    <h2>🏥 Data Health</h2>
+</div>
+<div class="health-card" id="healthContainer">
+    <div class="loading">Checking data health...</div>
+</div>
+
+<!-- Main Stats Grid -->
+<div class="stats-grid" id="statsGrid">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-leagues">-</div>
+        <div class="stat-label">Leagues</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-teams">-</div>
+        <div class="stat-label">Teams</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-players">-</div>
+        <div class="stat-label">Players</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-matches">-</div>
+        <div class="stat-label">Matches</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-player-stats">-</div>
+        <div class="stat-label">Player Stats</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-team-stats">-</div>
+        <div class="stat-label">Team Stats</div>
+    </div>
+</div>
+
+<!-- Two Column Layout: Leagues + Seasons -->
+<div class="two-column">
+    <!-- Leagues Section -->
+    <div>
+        <div class="section-header">
+            <h2>📊 League Coverage</h2>
+        </div>
+        <div class="card" style="padding: 0;" id="leaguesContainer">
+            <div class="loading">Loading leagues...</div>
+        </div>
+    </div>
+
+    <!-- Seasons Section -->
+    <div>
+        <div class="section-header">
+            <h2>📅 Season Data</h2>
+        </div>
+        <div class="card" style="padding: 0;" id="seasonsContainer">
+            <div class="loading">Loading seasons...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Timeline -->
+<div class="section-header">
+    <h2>📈 Match Data Timeline</h2>
+</div>
+<div class="card" id="timelineContainer">
+    <div class="loading">Loading timeline...</div>
+</div>
+
+<!-- Top Players Section -->
+<div class="section-header">
+    <h2>⭐ Top Players</h2>
+</div>
+
+<div class="filter-row">
+    <select class="filter-select" id="leagueFilter">
+        <option value="">All Leagues</option>
+    </select>
+    <select class="filter-select" id="seasonFilter">
+        <option value="">All Seasons</option>
+    </select>
+</div>
+
+<div class="tabs">
+    <button class="tab-btn active" data-tab="scorers">Top Scorers</button>
+    <button class="tab-btn" data-tab="assisters">Top Assisters</button>
+</div>
+
+<div class="card" style="padding: 0;">
+    <div id="scorersTab">
+        <div class="loading">Loading top scorers...</div>
+    </div>
+    <div id="assistersTab" style="display: none;">
+        <div class="loading">Loading top assisters...</div>
+    </div>
+</div>
+
+<!-- Recent Matches -->
+<div class="section-header">
+    <h2>⚽ Recent Matches</h2>
+    <a href="/matches" style="color: var(--accent); text-decoration: none; font-size: 0.875rem;">View all →</a>
+</div>
+<div class="card">
+    <table class="data-table" id="matchesTable">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>League</th>
+                <th style="text-align: right;">Home</th>
+                <th style="text-align: center;">Score</th>
+                <th>Away</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="5" class="loading">Loading matches...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Season Comparison -->
+<div class="section-header">
+    <h2>📊 Season Comparison</h2>
+</div>
+<div class="card" style="padding: 0;">
+    <table class="data-table" id="seasonComparisonTable">
+        <thead>
+            <tr>
+                <th>Season</th>
+                <th style="text-align:center;">Total Players</th>
+                <th style="text-align:center;">Players with xG</th>
+                <th style="text-align:center;">Avg xG</th>
+                <th>Top Scorer</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="5" class="loading">Loading season comparison...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Format large numbers
+    function formatNumber(num) {
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        return num?.toLocaleString() || '0';
+    }
+
+    // Fetch basic stats
+    async function fetchStats() {
+        try {
+            const response = await fetch('/api/stats');
+            const data = await response.json();
+
+            document.getElementById('stat-leagues').textContent = formatNumber(data.leagues);
+            document.getElementById('stat-teams').textContent = formatNumber(data.teams);
+            document.getElementById('stat-players').textContent = formatNumber(data.players);
+            document.getElementById('stat-matches').textContent = formatNumber(data.matches);
+            document.getElementById('stat-player-stats').textContent = formatNumber(data.player_season_stats);
+            document.getElementById('stat-team-stats').textContent = formatNumber(data.team_season_stats);
+        } catch (e) {
+            console.error("Failed to fetch stats", e);
+        }
+    }
+
+    // Fetch detailed stats
+    async function fetchDetailedStats() {
+        try {
+            const response = await fetch('/api/stats/detailed');
+            const data = await response.json();
+
+            // Render leagues
+            renderLeagues(data.leagues);
+
+            // Render seasons
+            renderSeasons(data.seasons);
+
+            // Render timeline
+            renderTimeline(data.monthly_matches);
+
+            // Render top scorers
+            renderTopScorers(data.top_scorers);
+
+            // Render top assisters
+            renderTopAssisters(data.top_assisters);
+
+            // Populate filters
+            populateFilters(data.leagues, data.seasons);
+        } catch (e) {
+            console.error("Failed to fetch detailed stats", e);
+        }
+    }
+
+    function renderLeagues(leagues) {
+        const container = document.getElementById('leaguesContainer');
+
+        if (!leagues || leagues.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No league data available</p></div>';
+            return;
+        }
+
+        container.innerHTML = leagues.map(l => `
+            <div class="league-card" onclick="window.location.href='/teams?league=${encodeURIComponent(l.name)}'">
+                <div class="league-info">
+                    <div class="league-name">${l.name}</div>
+                    <div class="league-country">${l.country}</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${l.data_completeness}%"></div>
+                    </div>
+                </div>
+                <div class="league-stats">
+                    <div class="league-stat"><span>${l.teams}</span> teams</div>
+                    <div class="league-stat"><span>${l.matches}</span> matches</div>
+                    <div class="league-stat"><span>${l.players_with_stats}</span> players</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderSeasons(seasons) {
+        const container = document.getElementById('seasonsContainer');
+
+        if (!seasons || seasons.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No season data available</p></div>';
+            return;
+        }
+
+        container.innerHTML = seasons.map(s => `
+            <div class="league-card">
+                <div class="league-info">
+                    <div class="league-name">${s.name}</div>
+                </div>
+                <div class="league-stats">
+                    <div class="league-stat"><span>${s.matches}</span> matches</div>
+                    <div class="league-stat"><span>${s.players_with_stats}</span> players</div>
+                    <div class="league-stat"><span>${s.stat_records}</span> records</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderTimeline(monthlyData) {
+        const container = document.getElementById('timelineContainer');
+
+        if (!monthlyData || monthlyData.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><p>No timeline data available</p></div>';
+            return;
+        }
+
+        const maxMatches = Math.max(...monthlyData.map(m => m.matches));
+
+        container.innerHTML = `
+            <div class="month-bar">
+                ${monthlyData.reverse().map(m => `
+                    <div class="month-item">
+                        <div class="month-bar-fill" style="height: ${(m.matches / maxMatches) * 80}px;" title="${m.matches} matches"></div>
+                        <div class="month-label">${m.month}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function getRankClass(index) {
+        if (index === 0) return 'gold';
+        if (index === 1) return 'silver';
+        if (index === 2) return 'bronze';
+        return '';
+    }
+
+    function renderTopScorers(scorers) {
+        const container = document.getElementById('scorersTab');
+
+        if (!scorers || scorers.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚽</div><p>No scoring data available</p></div>';
+            return;
+        }
+
+        container.innerHTML = scorers.map((p, i) => `
+            <div class="player-row" onclick="window.location.href='/players/${p.id}'">
+                <div class="player-rank ${getRankClass(i)}">${i + 1}</div>
+                <div class="player-info">
+                    <div class="player-name">${p.name}</div>
+                    <div class="player-meta">${p.team} • ${p.league} • ${p.season}</div>
+                </div>
+                <div class="player-stat">
+                    <div class="player-stat-value">${p.goals}</div>
+                    <div class="player-stat-label">Goals</div>
+                </div>
+                <div class="player-stat">
+                    <div class="player-stat-value">${p.assists}</div>
+                    <div class="player-stat-label">Assists</div>
+                </div>
+                <div class="player-stat">
+                    <div class="player-stat-value">${p.minutes ? Math.round(p.minutes / 90) : '-'}</div>
+                    <div class="player-stat-label">90s</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderTopAssisters(assisters) {
+        const container = document.getElementById('assistersTab');
+
+        if (!assisters || assisters.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🎯</div><p>No assist data available</p></div>';
+            return;
+        }
+
+        container.innerHTML = assisters.map((p, i) => `
+            <div class="player-row" onclick="window.location.href='/players/${p.id}'">
+                <div class="player-rank ${getRankClass(i)}">${i + 1}</div>
+                <div class="player-info">
+                    <div class="player-name">${p.name}</div>
+                    <div class="player-meta">${p.team} • ${p.league} • ${p.season}</div>
+                </div>
+                <div class="player-stat">
+                    <div class="player-stat-value">${p.assists}</div>
+                    <div class="player-stat-label">Assists</div>
+                </div>
+                <div class="player-stat">
+                    <div class="player-stat-value">${p.goals}</div>
+                    <div class="player-stat-label">Goals</div>
+                </div>
+                <div class="player-stat">
+                    <div class="player-stat-value">${p.minutes ? Math.round(p.minutes / 90) : '-'}</div>
+                    <div class="player-stat-label">90s</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function populateFilters(leagues, seasons) {
+        const leagueSelect = document.getElementById('leagueFilter');
+        const seasonSelect = document.getElementById('seasonFilter');
+
+        leagues.forEach(l => {
+            const option = document.createElement('option');
+            option.value = l.name;
+            option.textContent = l.name;
+            leagueSelect.appendChild(option);
+        });
+
+        seasons.forEach(s => {
+            const option = document.createElement('option');
+            option.value = s.name;
+            option.textContent = s.name;
+            seasonSelect.appendChild(option);
+        });
+    }
+
+    async function fetchMatches() {
+        try {
+            const response = await fetch('/api/matches');
+            const data = await response.json();
+
+            const tbody = document.querySelector('#matchesTable tbody');
+            tbody.innerHTML = data.slice(0, 20).map(m => `
+                <tr onclick="window.location.href='/matches/${m.id || '#'}'">
+                    <td style="white-space: nowrap;">${m.date}</td>
+                    <td><span style="background: rgba(59, 130, 246, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">${m.league}</span></td>
+                    <td style="text-align: right; font-weight: 600;">${m.home_team}</td>
+                    <td style="text-align: center; color: var(--accent); font-weight: 700; white-space: nowrap;">${m.score}</td>
+                    <td style="font-weight: 600;">${m.away_team}</td>
+                </tr>
+            `).join('');
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No matches found. Run data collection first!</td></tr>';
+            }
+        } catch (e) {
+            console.error("Failed to fetch matches", e);
+        }
+    }
+
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const tab = btn.dataset.tab;
+            document.getElementById('scorersTab').style.display = tab === 'scorers' ? 'block' : 'none';
+            document.getElementById('assistersTab').style.display = tab === 'assisters' ? 'block' : 'none';
+        });
+    });
+
+    // Filter change handlers
+    async function fetchFilteredPlayers() {
+        const league = document.getElementById('leagueFilter').value;
+        const season = document.getElementById('seasonFilter').value;
+
+        try {
+            const params = new URLSearchParams();
+            if (league) params.append('league', league);
+            if (season) params.append('season', season);
+            params.append('limit', '15');
+
+            // Fetch top scorers
+            params.set('sort', 'goals');
+            const scorersRes = await fetch(`/api/players/top?${params}`);
+            const scorers = await scorersRes.json();
+            renderTopScorers(scorers.map((p, i) => ({
+                ...p,
+                goals: p.goals,
+                assists: p.assists,
+                minutes: p.minutes
+            })));
+
+            // Fetch top assisters
+            params.set('sort', 'assists');
+            const assistersRes = await fetch(`/api/players/top?${params}`);
+            const assisters = await assistersRes.json();
+            renderTopAssisters(assisters.map((p, i) => ({
+                ...p,
+                goals: p.goals,
+                assists: p.assists,
+                minutes: p.minutes
+            })));
+        } catch (e) {
+            console.error("Failed to fetch filtered players", e);
+        }
+    }
+
+    document.getElementById('leagueFilter').addEventListener('change', fetchFilteredPlayers);
+    document.getElementById('seasonFilter').addEventListener('change', fetchFilteredPlayers);
+
+    // Fetch data health
+    async function fetchHealth() {
+        try {
+            const response = await fetch('/api/health');
+            const data = await response.json();
+            renderHealth(data);
+        } catch (e) {
+            console.error("Failed to fetch health data", e);
+            document.getElementById('healthContainer').innerHTML = '<div class="empty-state">Could not load health data</div>';
+        }
+    }
+
+    function renderHealth(data) {
+        const container = document.getElementById('healthContainer');
+        const score = data.score;
+        let scoreClass = 'poor';
+        let scoreLabel = 'Poor';
+        if (score >= 80) { scoreClass = 'excellent'; scoreLabel = 'Excellent'; }
+        else if (score >= 60) { scoreClass = 'good'; scoreLabel = 'Good'; }
+        else if (score >= 40) { scoreClass = 'warning'; scoreLabel = 'Fair'; }
+
+        const issuesHtml = data.issues.length > 0 ? `
+            <div class="health-issues">
+                ${data.issues.map(issue => `
+                    <div class="health-issue ${issue.level}">
+                        <span class="health-issue-icon">${issue.level === 'warning' ? '⚠️' : issue.level === 'error' ? '❌' : 'ℹ️'}</span>
+                        <span>${issue.message}</span>
+                    </div>
+                `).join('')}
+            </div>
+        ` : '<p style="color: var(--success); margin-top: 1rem;">✅ No data issues detected</p>';
+
+        const coverageHtml = data.coverage && data.coverage.length > 0 ? `
+            <div class="coverage-grid">
+                ${data.coverage.map(c => {
+                    const pctClass = c.coverage >= 70 ? 'high' : c.coverage >= 40 ? 'medium' : 'low';
+                    return `
+                        <div class="coverage-item">
+                            <div class="coverage-item-header">
+                                <span class="coverage-item-name">${c.league}</span>
+                                <span class="coverage-item-pct ${pctClass}">${c.coverage}%</span>
+                            </div>
+                            <div class="coverage-bar">
+                                <div class="coverage-bar-fill ${pctClass}" style="width: ${Math.min(100, c.coverage)}%"></div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                                ${c.teams} teams • ${c.players} players • ${c.records} records
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        ` : '';
+
+        container.innerHTML = `
+            <div class="health-header">
+                <div class="health-score">
+                    <div class="score-circle ${scoreClass}">${score}</div>
+                    <div>
+                        <div style="font-weight: 600; font-size: 1.1rem;">Data Health: ${scoreLabel}</div>
+                        <div style="color: var(--text-secondary); font-size: 0.875rem;">Based on data completeness and coverage</div>
+                    </div>
+                </div>
+            </div>
+            ${issuesHtml}
+            ${coverageHtml ? '<div style="margin-top: 1.5rem;"><strong>League Coverage</strong>' + coverageHtml + '</div>' : ''}
+            <div class="health-meta">
+                <div class="health-meta-item">
+                    📅 Latest Match: <span>${data.metrics.latest_match_date || 'N/A'}</span>
+                </div>
+                <div class="health-meta-item">
+                    🔄 Last Update: <span>${data.metrics.last_stat_update ? new Date(data.metrics.last_stat_update).toLocaleString() : 'N/A'}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Season Comparison
+    async function fetchSeasonComparison() {
+        try {
+            const res = await fetch('/api/stats/season-comparison');
+            const data = await res.json();
+            const tbody = document.querySelector('#seasonComparisonTable tbody');
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No season data available.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map(row => `
+                <tr>
+                    <td style="font-weight:600; color: var(--accent);">${row.season}</td>
+                    <td style="text-align:center;">${(row.total_players||0).toLocaleString()}</td>
+                    <td style="text-align:center;">${(row.players_with_xg||0).toLocaleString()}</td>
+                    <td style="text-align:center; color:#a78bfa;">${row.avg_xg !== null ? parseFloat(row.avg_xg).toFixed(2) : '—'}</td>
+                    <td>
+                        ${row.top_scorer !== 'N/A'
+                            ? `<span style="font-weight:600;">${row.top_scorer}</span>
+                               <span style="color: var(--text-secondary); font-size:0.8rem;"> — ${row.top_scorer_goals} goals</span>`
+                            : '<span style="color: var(--text-secondary);">N/A</span>'}
+                    </td>
+                </tr>
+            `).join('');
+        } catch(e) {
+            console.error('Season comparison failed', e);
+            document.querySelector('#seasonComparisonTable tbody').innerHTML =
+                '<tr><td colspan="5" class="empty-state">Failed to load season comparison.</td></tr>';
+        }
+    }
+
+    // Initial load
+    fetchHealth();
+    fetchStats();
+    fetchDetailedStats();
+    fetchMatches();
+    fetchSeasonComparison();
+
+    // Auto refresh every 60s
+    setInterval(() => {
+        fetchStats();
+        fetchMatches();
+    }, 60000);
+</script>
+{% endblock %}

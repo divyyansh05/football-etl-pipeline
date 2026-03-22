@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+
+{% block title %}Teams - Football Data Pipeline{% endblock %}
+
+{% block head %}
+<style>
+    .league-filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .league-btn {
+        padding: 0.4rem 1rem;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 1.5rem;
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .league-btn:hover, .league-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Teams</h1>
+    <div style="color: var(--text-secondary);">Browse and specific team analysis</div>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+    <input type="text" id="searchInput" placeholder="Search teams…"
+        style="width: 100%; padding: 0.75rem; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: white; border-radius: 0.5rem;">
+</div>
+
+<!-- League filter buttons -->
+<div class="league-filter-bar" id="leagueFilterBar">
+    <button class="league-btn active" data-league="">All Leagues</button>
+    <button class="league-btn" data-league="Premier League">Premier League</button>
+    <button class="league-btn" data-league="La Liga">La Liga</button>
+    <button class="league-btn" data-league="Serie A">Serie A</button>
+    <button class="league-btn" data-league="Bundesliga">Bundesliga</button>
+    <button class="league-btn" data-league="Ligue 1">Ligue 1</button>
+    <button class="league-btn" data-league="Eredivisie">Eredivisie</button>
+    <button class="league-btn" data-league="Brasileiro Serie A">Brasileirão</button>
+    <button class="league-btn" data-league="Argentina Primera Division">Argentina</button>
+</div>
+
+<div class="card">
+    <table class="data-table" id="teamsTable">
+        <thead>
+            <tr>
+                <th>Team Name</th>
+                <th>League</th>
+                <th>Stadium</th>
+                <th>Founded</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Populated by JS -->
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let allTeams = [];
+    let activeLeague = '';
+    let searchQuery = '';
+
+    async function fetchTeams(query = '') {
+        try {
+            const url = query ? `/api/teams?q=${encodeURIComponent(query)}` : '/api/teams';
+            const response = await fetch(url);
+            allTeams = await response.json();
+            renderTeams();
+        } catch (e) {
+            console.error("Failed to fetch teams", e);
+        }
+    }
+
+    function renderTeams() {
+        const filtered = activeLeague
+            ? allTeams.filter(t => t.league === activeLeague)
+            : allTeams;
+
+        const tbody = document.querySelector('#teamsTable tbody');
+        tbody.innerHTML = filtered.map(t => `
+            <tr onclick="window.location.href='/teams/${t.id}'">
+                <td style="font-weight: 600; color: var(--accent);">${t.name}</td>
+                <td>${t.league}</td>
+                <td>${t.stadium || '-'}</td>
+                <td>${t.founded || '-'}</td>
+            </tr>
+        `).join('');
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-secondary);">No teams found.</td></tr>';
+        }
+    }
+
+    // League filter buttons
+    document.querySelectorAll('.league-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.league-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeLeague = btn.dataset.league;
+            renderTeams();
+        });
+    });
+
+    // Search listener
+    let debounceTimer;
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            searchQuery = e.target.value;
+            fetchTeams(searchQuery);
+        }, 300);
+    });
+
+    fetchTeams();
+</script>
+{% endblock %}
