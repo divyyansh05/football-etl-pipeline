@@ -28,3 +28,14 @@ venv/
 .claude/
 data/
 logs/
+
+# Claude Code configuration (local only)
+.claude/
+!.claude/CLAUDE.md
+
+# Data directories
+data/
+logs/
+*.log
+.claude/
+.claude/
