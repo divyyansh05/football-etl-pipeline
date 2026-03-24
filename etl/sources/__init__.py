@@ -1,1 +1,0 @@
-# SoccerData source adapters
