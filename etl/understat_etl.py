@@ -14,6 +14,7 @@ Bronze layer:
   data/raw/understat/{league_slug}/{season}/players.json
 """
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -195,7 +196,11 @@ class UnderstatETL(BaseETL):
         """Fetch player season stats from soccerdata Understat."""
         import soccerdata as sd
 
-        us = sd.Understat(leagues=us_league, seasons=us_key)
+        us = sd.Understat(
+            leagues=us_league,
+            seasons=us_key,
+            data_dir=Path('data/cache/soccerdata/Understat'),
+        )
         df = us.read_player_season_stats()
         logger.info(
             f"soccerdata returned {len(df)} player rows "

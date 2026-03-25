@@ -19,6 +19,7 @@ Design:
 """
 import logging
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from etl.base_etl import BaseETL
@@ -165,7 +166,7 @@ class ClubEloETL(BaseETL):
         """
         import soccerdata as sd
 
-        ce = sd.ClubElo()
+        ce = sd.ClubElo(data_dir=Path('data/cache/soccerdata/ClubElo'))
         df = ce.read_by_date(date_str)
         if df is None or df.empty:
             return []

@@ -140,6 +140,8 @@ class SeasonUtils:
             logger.warning(f"Could not convert season to DB format: {e}")
             return str(season)
 
+    # historical format — FotMob/StatsBomb no longer used as sources
+    # kept for backward compatibility; pure string conversion, no API calls
     @classmethod
     def to_fotmob_format(cls, season: str) -> str:
         """
@@ -161,6 +163,8 @@ class SeasonUtils:
             logger.warning(f"Could not convert season to FotMob format: {e}")
             return str(season)
 
+    # historical format — FotMob/StatsBomb no longer used as sources
+    # kept for backward compatibility; pure string conversion, no API calls
     @classmethod
     def to_statsbomb_format(cls, season: str) -> str:
         """
