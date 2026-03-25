@@ -1,21 +1,23 @@
 """
 Scheduler module for automated data collection jobs.
 
-This module provides APScheduler-based job scheduling for the ETL pipeline,
-enabling automatic daily data collection within API rate limits.
+Active sources: SofaScore, Understat, ClubElo.
+Dead sources removed: FotMob, API-Football, StatsBomb.
 """
 
 from .job_scheduler import JobScheduler, get_scheduler
 from .jobs import (
-    daily_collection_job,
-    priority_collection_job,
-    update_current_season_job,
+    sofascore_weekly_job,
+    understat_weekly_job,
+    clubelo_weekly_job,
+    catchup_weekly_job,
 )
 
 __all__ = [
     'JobScheduler',
     'get_scheduler',
-    'daily_collection_job',
-    'priority_collection_job',
-    'update_current_season_job',
+    'sofascore_weekly_job',
+    'understat_weekly_job',
+    'clubelo_weekly_job',
+    'catchup_weekly_job',
 ]
