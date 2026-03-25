@@ -180,7 +180,7 @@ def sample_player_season_stats():
         'goals': 5,
         'assists': 4,
         'xg': 4.2,
-        'xag': 3.5,
+        'xa': 3.5,
         'shots': 45,
         'shots_on_target': 20,
         'key_passes': 35,

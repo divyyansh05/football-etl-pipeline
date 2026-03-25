@@ -25,22 +25,23 @@ from etl.base_etl import BaseETL
 
 logger = logging.getLogger(__name__)
 
-# Leagues we care about — ClubElo league strings
+# Leagues we care about — soccerdata ClubElo league strings (confirmed March 2026)
+# Format used by soccerdata.ClubElo.read_by_date(): "ENG-Premier League", etc.
 TARGET_LEAGUES = {
-    "ENG1",  # Premier League
-    "ESP1",  # La Liga
-    "ITA1",  # Serie A
-    "GER1",  # Bundesliga
-    "FRA1",  # Ligue 1
+    "ENG-Premier League",  # Premier League
+    "ESP-La Liga",         # La Liga
+    "ITA-Serie A",         # Serie A
+    "GER-Bundesliga",      # Bundesliga
+    "FRA-Ligue 1",         # Ligue 1
 }
 
 # ClubElo league string → canonical DB league name
 CLUBELO_TO_LEAGUE = {
-    "ENG1": "Premier League",
-    "ESP1": "La Liga",
-    "ITA1": "Serie A",
-    "GER1": "Bundesliga",
-    "FRA1": "Ligue 1",
+    "ENG-Premier League": "Premier League",
+    "ESP-La Liga":        "La Liga",
+    "ITA-Serie A":        "Serie A",
+    "GER-Bundesliga":     "Bundesliga",
+    "FRA-Ligue 1":        "Ligue 1",
 }
 
 
@@ -169,14 +170,29 @@ class ClubEloETL(BaseETL):
         if df is None or df.empty:
             return []
 
+        import math
+
+        def _safe_int(val):
+            """Convert to int, returning None for NaN/None/falsy."""
+            if val is None:
+                return None
+            try:
+                f = float(val)
+                if math.isnan(f):
+                    return None
+                return int(f)
+            except (ValueError, TypeError):
+                return None
+
         rows = []
         for idx, row in df.iterrows():
             club = str(idx) if not isinstance(idx, str) else idx
+            rank_val = row.get("rank") if "rank" in row else row.get("Rank")
             rows.append({
                 "team":   club,
                 "league": row.get("league") or row.get("League") or "",
                 "elo":    float(row.get("elo") or row.get("Elo") or 0),
-                "rank":   int(row.get("rank") or row.get("Rank") or 0) if (row.get("rank") or row.get("Rank")) else None,
+                "rank":   _safe_int(rank_val),
             })
         return rows
 
