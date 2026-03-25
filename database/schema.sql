@@ -456,8 +456,8 @@ CREATE TABLE public.players (
     player_id integer NOT NULL,
     player_name character varying(200) NOT NULL,
     player_name_norm character varying(200),
-    fotmob_id integer NOT NULL,
-    sofascore_id integer,
+    fotmob_id integer,
+    sofascore_id integer NOT NULL,
     understat_id integer,
     "position" character varying(50),
     position_group character varying(10),
@@ -469,7 +469,7 @@ CREATE TABLE public.players (
     shirt_number integer,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
-    created_by character varying(20) DEFAULT 'fotmob'::character varying
+    created_by character varying(50) DEFAULT 'sofascore'::character varying
 );
 
 
@@ -670,7 +670,8 @@ CREATE TABLE public.teams (
     clubelo_name character varying(150),
     country character varying(100),
     created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now()
+    updated_at timestamp with time zone DEFAULT now(),
+    created_by character varying(50) DEFAULT 'sofascore'::character varying
 );
 
 
@@ -889,7 +890,7 @@ CREATE VIEW public.v_players_current_season AS
      JOIN public.teams t ON ((pss.team_id = t.team_id)))
      JOIN public.leagues l ON ((pss.league_id = l.league_id)))
      JOIN public.seasons s ON ((pss.season_id = s.season_id)))
-  WHERE (((s.season_name)::text = '2025-26'::text) AND (pss.minutes >= 450));
+  WHERE (s.is_current = TRUE AND (pss.minutes >= 450));
 
 
 --
@@ -1229,6 +1230,14 @@ ALTER TABLE ONLY public.teams
 
 ALTER TABLE ONLY public.teams
     ADD CONSTRAINT teams_team_name_league_id_key UNIQUE (team_name, league_id);
+
+
+--
+-- Name: teams teams_sofascore_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.teams
+    ADD CONSTRAINT teams_sofascore_id_key UNIQUE (sofascore_id);
 
 
 --
