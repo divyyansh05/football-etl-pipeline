@@ -10,7 +10,7 @@ Understat and ClubElo enrich existing records only.
 
 | Source | Role | Method | Rate limit |
 |--------|------|--------|------------|
-| SofaScore | PRIMARY — player identity + deep stats | Custom HTTP scraper | 3s/req |
+| SofaScore | PRIMARY — player identity + deep stats | Custom HTTP scraper | 1.5s/req |
 | Understat | ENRICHMENT — xG, npxG, xA, xGChain, xGBuildup | soccerdata library | library-managed |
 | ClubElo | ENRICHMENT — team ELO snapshots | soccerdata library | none (CSV) |
 
@@ -114,8 +114,8 @@ football-etl-pipeline/
 
 3. **Bronze layer mandatory** — all raw API responses saved to `data/raw/` before DB upserts.
 
-4. **Weekly scheduler** (Mon/Tue/Wed/Thu) rather than daily — SofaScore rate limit is 3s/req,
-   a full 5-league season refresh takes ~2-3 hours.
+4. **Weekly scheduler** (Mon/Tue/Wed/Thu) rather than daily — SofaScore rate limit is 1.5s/req,
+   a full 5-league season refresh takes ~1-2 hours.
 
 ## Coding Conventions
 
@@ -148,3 +148,23 @@ Seasons: 2022-23, 2023-24, 2024-25, 2025-26
 | SofaScore collection | > 70% | Review |
 
 Run: `python scripts/quality_audit.py`
+
+## Notes for AI Agents
+
+- **Root CLAUDE.md is a legacy artifact** — it describes the old FotMob/API-Football
+  architecture. The authoritative project memory is in `.claude/CLAUDE.md`.
+  When in conflict, `.claude/CLAUDE.md` wins.
+
+- **`starts` column removed** from `/api/players/top` query — this column does not
+  exist in the schema v2 `player_season_stats` table. The column was removed in
+  `server/app.py` (Step 1, March 2026 rebuild).
+
+- **`data_sources` table disposition (Option B)** — the `data_sources` table was
+  removed in the schema v2 rebuild. Zero executable code references remain.
+  Migration 002 contains a guarded DROP (no-op if table absent). No further
+  action needed; removal milestone noted here.
+
+- **SofaScore 403 from development machine** — the SofaScore API returns 403 when
+  called from this IP/environment. This is an IP-level anti-bot block, not a
+  code error. The Docker scheduler container may have a different IP profile.
+  If smoke tests fail with 403, verify from a clean network environment.
