@@ -74,7 +74,7 @@ PLAYER_SEASON_STATS_RULES = [
 
     # xG validation (most common issues)
     ValidationRule('xg', 'range', {'min': 0, 'max': 50}, severity='high', message='xG out of reasonable range'),
-    ValidationRule('xag', 'range', {'min': 0, 'max': 30}, severity='high', message='xA out of reasonable range'),
+    ValidationRule('xa', 'range', {'min': 0, 'max': 30}, severity='high', message='xA out of reasonable range'),
     ValidationRule('npxg', 'range', {'min': 0, 'max': 50}, severity='high'),
 
     # Basic stats
@@ -381,7 +381,7 @@ class AnomalyDetector:
     # Expected ranges for key metrics (mean, std)
     EXPECTED_RANGES = {
         'xg': {'mean': 5.0, 'std': 5.0, 'max_zscore': 4},  # xG > 25 is suspicious
-        'xag': {'mean': 3.0, 'std': 3.0, 'max_zscore': 4},
+        'xa': {'mean': 3.0, 'std': 3.0, 'max_zscore': 4},
         'goals': {'mean': 5.0, 'std': 8.0, 'max_zscore': 4},
         'assists': {'mean': 3.0, 'std': 5.0, 'max_zscore': 4},
         'rating': {'mean': 6.8, 'std': 0.5, 'max_zscore': 4},

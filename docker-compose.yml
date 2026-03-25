@@ -1,7 +1,30 @@
+# Football ETL Pipeline — Docker Compose
+#
+# Services:
+#   db        — PostgreSQL 15 with pg_trgm + unaccent extensions
+#   migrate   — Runs schema migrations once, then exits
+#   backfill  — Initial historical backfill (runs once, skips populated data)
+#   scheduler — Weekly ETL scheduler (SofaScore → Understat → ClubElo)
+#   server    — Flask API / dashboard on port 5001
+#
+# Startup order:
+#   db → migrate → backfill → scheduler + server
+
+x-common-env: &common-env
+  DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-football_data}"
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_USER: ${DB_USER:-postgres}
+  DB_PASSWORD: ${DB_PASSWORD:-postgres}
+  DB_NAME: ${DB_NAME:-football_data}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
 services:
+
+  # ── PostgreSQL 15 ───────────────────────────────────────────────────────────
   db:
     image: postgres:15-alpine
-    container_name: football_etl_db
+    container_name: football_db
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
@@ -10,61 +33,84 @@ services:
       - "${DB_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-football_data}"]
       interval: 5s
       timeout: 5s
-      retries: 5
-  adminer:
-    image: adminer
-    container_name: football_etl_adminer
-    ports:
-      - "8080:8080"
-    restart: unless-stopped
-    depends_on:
-      - db
-  init:
+      retries: 10
+
+  # ── Migration runner (runs once) ────────────────────────────────────────────
+  migrate:
     build: .
-    container_name: football_etl_init
-    command: python scripts/init_backfill.py
+    container_name: football_migrate
+    command: python database/migrations/runner.py
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DB_NAME: ${DB_NAME:-football_data}
-      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      <<: *common-env
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
-  scheduler:
+
+  # ── Initial backfill (runs once, idempotent) ────────────────────────────────
+  backfill:
     build: .
-    container_name: football_etl_scheduler
-    command: python run_scheduler.py
+    container_name: football_backfill
+    command: python scripts/init_backfill.py
+    profiles: [backfill]
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DB_NAME: ${DB_NAME:-football_data}
-      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      FOTMOB_RATE_LIMIT: ${FOTMOB_RATE_LIMIT:-2.0}
+      <<: *common-env
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
-      init:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ── Weekly ETL scheduler ────────────────────────────────────────────────────
+  scheduler:
+    build: .
+    container_name: football_scheduler
+    command: python run_scheduler.py
+    environment:
+      <<: *common-env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  # ── Flask API / dashboard ───────────────────────────────────────────────────
+  server:
+    build: .
+    container_name: football_server
+    command: gunicorn --bind 0.0.0.0:5001 --workers 2 server.app:app
+    environment:
+      <<: *common-env
+      FLASK_ENV: ${FLASK_ENV:-production}
+    ports:
+      - "${SERVER_PORT:-5001}:5001"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5001/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
 volumes:
   postgres_data:

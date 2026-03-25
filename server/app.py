@@ -26,9 +26,12 @@ def get_stats():
     """Get overall database statistics."""
     db = get_db()
 
-    # Convert Row objects to dicts for serialization
-    sources_data = db.execute_query("SELECT source_name, reliability_score FROM data_sources", fetch=True)
-    sources_list = [{'name': row[0], 'score': row[1]} for row in sources_data]
+    # Active data sources (hardcoded — data_sources table removed in schema v2)
+    sources_list = [
+        {'name': 'sofascore',  'score': 95},
+        {'name': 'understat',  'score': 90},
+        {'name': 'clubelo',    'score': 85},
+    ]
 
     stats = {
         'leagues': db.execute_query("SELECT COUNT(*) FROM leagues", fetch=True)[0][0],
@@ -56,7 +59,7 @@ def get_detailed_stats():
             COUNT(DISTINCT t.team_id) as teams,
             COUNT(DISTINCT m.match_id) as matches,
             COUNT(DISTINCT pss.player_id) as players_with_stats,
-            COUNT(DISTINCT pss.player_season_stat_id) as stat_records
+            COUNT(DISTINCT pss.stat_id) as stat_records
         FROM leagues l
         LEFT JOIN teams t ON l.league_id = t.league_id
         LEFT JOIN matches m ON l.league_id = m.league_id
@@ -83,7 +86,7 @@ def get_detailed_stats():
             s.season_name,
             COUNT(DISTINCT m.match_id) as matches,
             COUNT(DISTINCT pss.player_id) as players_with_stats,
-            COUNT(DISTINCT pss.player_season_stat_id) as stat_records
+            COUNT(DISTINCT pss.stat_id) as stat_records
         FROM seasons s
         LEFT JOIN matches m ON s.season_id = m.season_id
         LEFT JOIN player_season_stats pss ON s.season_id = pss.season_id
@@ -237,12 +240,11 @@ def get_top_players():
             l.league_name,
             s.season_name,
             pss.matches_played,
-            pss.starts,
             pss.minutes,
             pss.goals,
             pss.assists,
             pss.xg,
-            pss.xag,
+            pss.xa,
             pss.shots,
             pss.key_passes,
             ROUND((pss.goals::numeric / NULLIF(pss.minutes, 0) * 90)::numeric, 2) as goals_per_90,
@@ -269,16 +271,15 @@ def get_top_players():
         'league': row[5],
         'season': row[6],
         'matches': row[7],
-        'starts': row[8],
-        'minutes': row[9],
-        'goals': row[10],
-        'assists': row[11],
-        'xg': float(row[12]) if row[12] else None,
-        'xag': float(row[13]) if row[13] else None,
-        'shots': row[14],
-        'key_passes': row[15],
-        'goals_per_90': float(row[16]) if row[16] else None,
-        'assists_per_90': float(row[17]) if row[17] else None
+        'minutes': row[8],
+        'goals': row[9],
+        'assists': row[10],
+        'xg': float(row[11]) if row[11] else None,
+        'xa': float(row[12]) if row[12] else None,
+        'shots': row[13],
+        'key_passes': row[14],
+        'goals_per_90': float(row[15]) if row[15] else None,
+        'assists_per_90': float(row[16]) if row[16] else None
     } for row in players])
 
 
@@ -391,7 +392,7 @@ def get_data_health():
             l.league_name,
             COUNT(DISTINCT t.team_id) as teams,
             COUNT(DISTINCT pss.player_id) as players_with_stats,
-            COUNT(DISTINCT pss.player_season_stat_id) as stat_records,
+            COUNT(DISTINCT pss.stat_id) as stat_records,
             ROUND(COUNT(DISTINCT pss.player_id)::numeric / NULLIF(COUNT(DISTINCT t.team_id), 0) / 25 * 100, 1) as coverage_pct
         FROM leagues l
         LEFT JOIN teams t ON l.league_id = t.league_id
@@ -678,7 +679,7 @@ def get_player_details(player_id):
             pss.goals,
             pss.assists,
             pss.xg,
-            pss.xag,
+            pss.xa,
             pss.shots,
             pss.key_passes,
             pss.passes_completed,
@@ -706,7 +707,7 @@ def get_player_details(player_id):
         'goals': row[6] or 0,
         'assists': row[7] or 0,
         'xg': float(row[8]) if row[8] else 0.0,
-        'xag': float(row[9]) if row[9] else 0.0,
+        'xa': float(row[9]) if row[9] else 0.0,
         'shots': row[10] or 0,
         'key_passes': row[11] or 0,
         'passes': row[12] or 0,
@@ -724,7 +725,7 @@ def get_player_details(player_id):
         'assists': sum(s['assists'] for s in player_data['season_stats']),
         'minutes': sum(s['minutes'] for s in player_data['season_stats']),
         'xg': sum(s['xg'] for s in player_data['season_stats']),
-        'xag': sum(s['xag'] for s in player_data['season_stats'])
+        'xa': sum(s['xa'] for s in player_data['season_stats'])
     }
     player_data['career_totals'] = totals
 
@@ -808,14 +809,10 @@ def get_match_full_details(match_id):
 # ─────────────────────────────────────────────────────────────────────────────
 
 KNOWN_JOBS = {
-    'fotmob_daily':          {'schedule': 'Daily 05:00 UTC',      'source': 'FotMob'},
-    'fotmob_weekly_deep':    {'schedule': 'Sunday 02:00 UTC',     'source': 'FotMob'},
-    'api_football_daily':    {'schedule': 'Daily 06:00 UTC',      'source': 'API-Football'},
-    'understat_monday':      {'schedule': 'Monday 08:00 UTC',     'source': 'Understat'},
-    'understat_thursday':    {'schedule': 'Thursday 08:00 UTC',   'source': 'Understat'},
-    'understat_weekly_full': {'schedule': 'Sunday 04:00 UTC',     'source': 'Understat'},
-    'priority_standings':    {'schedule': 'Daily 12:00 UTC',      'source': 'API-Football'},
-    'current_season_update': {'schedule': 'Daily 18:00 UTC',      'source': 'API-Football'},
+    'sofascore_weekly':  {'schedule': 'Monday 05:00 UTC',    'source': 'SofaScore'},
+    'understat_weekly':  {'schedule': 'Tuesday 05:00 UTC',   'source': 'Understat'},
+    'clubelo_weekly':    {'schedule': 'Wednesday 05:00 UTC', 'source': 'ClubElo'},
+    'catchup_weekly':    {'schedule': 'Thursday 05:00 UTC',  'source': 'SofaScore+Understat'},
 }
 
 
@@ -929,7 +926,7 @@ def get_pipeline_latest_data():
     freshness = db.execute_query("""
         SELECT l.league_name, s.season_name,
                MAX(pss.updated_at) as last_updated,
-               COUNT(pss.player_season_stat_id) as record_count
+               COUNT(pss.stat_id) as record_count
         FROM player_season_stats pss
         JOIN leagues l ON pss.league_id = l.league_id
         JOIN seasons s ON pss.season_id = s.season_id
@@ -1089,7 +1086,7 @@ def get_team_seasons(team_id):
 
     rows = db.execute_query("""
         SELECT s.season_name, s.season_id,
-               COUNT(pss.player_season_stat_id) as player_count,
+               COUNT(pss.stat_id) as player_count,
                tss.matches_played, tss.wins, tss.losses, tss.draws,
                tss.goals_for, tss.goals_against
         FROM player_season_stats pss

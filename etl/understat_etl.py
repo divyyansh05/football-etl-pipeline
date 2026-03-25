@@ -1,473 +1,423 @@
 """
-Understat ETL Integration
+UnderstatETL — ENRICHMENT ONLY.
 
-Extracts advanced xG metrics from understat.com:
-- xA (Expected Assists)
-- npxG (Non-penalty xG)
-- xGChain
-- xGBuildup
+Adds xG, npxG, xA, xGChain, xGBuildup to existing player_season_stats rows.
 
-These metrics fill critical gaps not available from FotMob or API-Football.
+CANONICAL RULE: This ETL NEVER creates player or team records.
+If a player cannot be matched to an existing DB record, they are logged
+to unmatched_players_log and skipped.
+
+Data source: soccerdata library (Understat class).
+Season key format: '2526' for 2025-26, '2425' for 2024-25, etc.
+
+Bronze layer:
+  data/raw/understat/{league_slug}/{season}/players.json
 """
-
 import logging
-from typing import Dict, List, Optional, Any
-from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from database.connection import get_db
-from scrapers.understat.client import UnderstatClient, LEAGUE_MAPPINGS
+import pandas as pd
+
+from etl.base_etl import BaseETL
+from utils.identity_resolution import IdentityResolver
 
 logger = logging.getLogger(__name__)
 
+# ── League mappings: canonical DB name → soccerdata Understat league string ──
 
-class UnderstatETL:
+LEAGUE_MAP = {
+    "Premier League": "ENG-Premier League",
+    "La Liga":        "ESP-La Liga",
+    "Serie A":        "ITA-Serie A",
+    "Bundesliga":     "GER-Bundesliga",
+    "Ligue 1":        "FRA-Ligue 1",
+}
+
+# ── Season name → soccerdata key ('2024-25' → '2425') ────────────────────────
+
+def _season_key(season_name: str) -> str:
+    """Convert '2024-25' to '2425', '2025-26' to '2526', etc."""
+    parts = season_name.split("-")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid season_name: {season_name!r}")
+    return parts[0][-2:] + parts[1][-2:]
+
+
+def _league_slug(league_name: str) -> str:
+    return league_name.lower().replace(" ", "-")
+
+
+# ── soccerdata column → DB column ─────────────────────────────────────────────
+# Only the 5 xG columns that Understat contributes.
+
+UNDERSTAT_COL_MAP = {
+    "xg":         "xg",
+    "np_xg":      "npxg",
+    "xa":         "xa",
+    "xg_chain":   "xg_chain",
+    "xg_buildup": "xg_buildup",
+}
+
+
+class UnderstatETL(BaseETL):
     """
-    ETL pipeline for Understat data.
+    Enriches player_season_stats with Understat xG metrics.
 
-    Enriches existing player/team records with advanced xG metrics.
+    Requires SofaScoreETL to have already populated players + player_season_stats
+    for the relevant league/season.
     """
 
-    # Map our league keys to Understat's
-    SUPPORTED_LEAGUES = list(LEAGUE_MAPPINGS.keys())
+    SOURCE_NAME = "understat"
+    SUPPORTED_LEAGUES = list(LEAGUE_MAP.keys())
 
     def __init__(self, db=None):
-        self.client = UnderstatClient(rate_limit_delay=2.0)
-        self.db = db or get_db()
-        self.source_id = self._get_or_create_source()
+        super().__init__(db)
+        self._resolver = IdentityResolver(self.db)
 
-        # Caches for ID mapping
-        self._player_cache = {}  # understat_id -> db_id
-        self._team_cache = {}  # (name, league_id) -> db_id
-        self._league_cache = {}  # league_key -> db_id
+    # ── Abstract implementation ───────────────────────────────────────────────
 
-        # Statistics
-        self.stats = {
-            'players_enriched': 0,
-            'teams_enriched': 0,
-            'new_players': 0,
-            'new_teams': 0,
-            'errors': []
-        }
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-    def _get_or_create_source(self) -> int:
-        """Get or create Understat data source ID."""
-        query = """
-            INSERT INTO data_sources (source_name, base_url, reliability_score)
-            VALUES ('understat', 'https://understat.com', 90)
-            ON CONFLICT (source_name)
-            DO UPDATE SET last_successful_scrape = CURRENT_TIMESTAMP
-            RETURNING source_id
+    def run(self, league: str, season: str) -> Dict[str, Any]:
         """
-        result = self.db.execute_query(query, fetch=True)
-        return result[0][0]
-
-    def process_league_season(self, league: str, season: int) -> Dict:
-        """
-        Process all players and teams for a league/season.
+        Run Understat enrichment for one league/season.
 
         Args:
-            league: League key (e.g., 'premier-league')
-            season: Season start year (e.g., 2024 for 2024/25)
+            league: Canonical league name, e.g. 'Premier League'
+            season: Season name, e.g. '2024-25'
 
         Returns:
-            Statistics dict
+            Stats dict: {processed, enriched, skipped, errors, unmatched}
         """
-        if league not in self.SUPPORTED_LEAGUES:
-            logger.error(f"League {league} not supported by Understat")
-            return self.stats
-
-        logger.info(f"Processing Understat data for {league} {season}")
-
-        # Get league ID from our database
-        league_id = self._get_league_id(league)
-        if not league_id:
-            logger.error(f"League {league} not found in database")
-            return self.stats
-
-        # Get season ID
-        season_id = self._get_season_id(season)
-        if not season_id:
-            logger.error(f"Season {season} not found in database")
-            return self.stats
-
-        # Process teams
-        try:
-            teams = self.client.get_league_teams(league, season)
-            for team_data in teams:
-                self._process_team(team_data, league_id, season_id)
-        except Exception as e:
-            logger.error(f"Error processing teams: {e}")
-            self.stats['errors'].append(f"Teams: {str(e)}")
-
-        # Process players
-        try:
-            players = self.client.get_league_players(league, season)
-            for player_data in players:
-                self._process_player(player_data, league_id, season_id)
-        except Exception as e:
-            logger.error(f"Error processing players: {e}")
-            self.stats['errors'].append(f"Players: {str(e)}")
-
-        return self.stats
-
-    def _process_team(self, team_data: Dict, league_id: int, season_id: int):
-        """Process and save team xG data."""
-        team_name = team_data.get('name', '')
-        understat_id = team_data.get('understat_id')
-
-        if not team_name:
-            return
-
-        # Find or create team
-        team_id = self._find_or_create_team(team_name, league_id, understat_id)
-
-        # Update team_season_stats with xG data
-        query = """
-            INSERT INTO team_season_stats (
-                team_id, season_id, league_id,
-                matches_played, goals_for, goals_against,
-                xg_for, xg_against, npxg_for, npxg_against,
-                ppda, deep_completions, deep_completions_allowed,
-                data_source_id, last_updated
+        if league not in LEAGUE_MAP:
+            raise ValueError(
+                f"Unsupported league: {league!r}. "
+                f"Supported: {list(LEAGUE_MAP.keys())}"
             )
-            VALUES (
-                :team_id, :season_id, :league_id,
-                :matches, :gf, :ga,
-                :xg, :xga, :npxg, :npxga,
-                :ppda, :deep, :deep_allowed,
-                :src, CURRENT_TIMESTAMP
-            )
-            ON CONFLICT (team_id, season_id, league_id) DO UPDATE SET
-                xg_for = COALESCE(EXCLUDED.xg_for, team_season_stats.xg_for),
-                xg_against = COALESCE(EXCLUDED.xg_against, team_season_stats.xg_against),
-                npxg_for = COALESCE(EXCLUDED.npxg_for, team_season_stats.npxg_for),
-                npxg_against = COALESCE(EXCLUDED.npxg_against, team_season_stats.npxg_against),
-                ppda = COALESCE(EXCLUDED.ppda, team_season_stats.ppda),
-                deep_completions = COALESCE(EXCLUDED.deep_completions, team_season_stats.deep_completions),
-                deep_completions_allowed = COALESCE(EXCLUDED.deep_completions_allowed, team_season_stats.deep_completions_allowed),
-                last_updated = CURRENT_TIMESTAMP
-        """
 
-        params = {
-            'team_id': team_id,
-            'season_id': season_id,
-            'league_id': league_id,
-            'matches': team_data.get('matches', 0),
-            'gf': team_data.get('goals_for', 0),
-            'ga': team_data.get('goals_against', 0),
-            'xg': team_data.get('xg'),
-            'xga': team_data.get('xga'),
-            'npxg': team_data.get('npxg'),
-            'npxga': team_data.get('npxga'),
-            'ppda': team_data.get('ppda'),
-            'deep': team_data.get('deep'),
-            'deep_allowed': team_data.get('deep_allowed'),
-            'src': self.source_id
+        slug      = _league_slug(league)
+        us_league = LEAGUE_MAP[league]
+        us_key    = _season_key(season)
+
+        run_id = self.start_run(league, season)
+        logger.info(
+            f"[run={run_id}] UnderstatETL: {league} {season} "
+            f"(understat key={us_key!r})"
+        )
+
+        counts = {
+            "processed": 0,
+            "enriched":  0,
+            "skipped":   0,
+            "errors":    0,
+            "unmatched": 0,
         }
 
-        try:
-            self.db.execute_query(query, params, fetch=False)
-            self.stats['teams_enriched'] += 1
-        except Exception as e:
-            logger.error(f"Error saving team stats for {team_name}: {e}")
+        # ── DB context ───────────────────────────────────────────────────────
+        league_id = self.get_league_id(league)
+        season_id = self.get_season_id(season)
+        if not league_id or not season_id:
+            logger.error(
+                f"league_id or season_id not found in DB: {league}/{season}"
+            )
+            counts["errors"] += 1
+            self.finish_run(run_id, status="error", **counts)
+            return counts
 
-    def _process_player(self, player_data: Dict, league_id: int, season_id: int):
-        """Process and save player xG data."""
-        player_name = player_data.get('name', '')
-        understat_id = player_data.get('understat_id')
-        team_name = player_data.get('team', '')
+        # ── Fetch from soccerdata ────────────────────────────────────────────
+        try:
+            df = self._fetch(us_league, us_key)
+        except Exception as exc:
+            logger.error(f"soccerdata fetch failed: {exc}", exc_info=True)
+            counts["errors"] += 1
+            self.finish_run(run_id, status="error", **counts)
+            return counts
+
+        if df.empty:
+            logger.warning(f"No Understat data for {league} {season}")
+            self.finish_run(run_id, status="success", **counts)
+            return counts
+
+        # ── Bronze ───────────────────────────────────────────────────────────
+        self.save_bronze(
+            df.reset_index().to_dict(orient="records"),
+            self.SOURCE_NAME, slug, season,
+            "players.json",
+        )
+
+        # ── Before count ─────────────────────────────────────────────────────
+        rows_before = self._count_understat_enriched(league_id, season_id)
+
+        # ── Process each player ───────────────────────────────────────────────
+        for row in df.reset_index().to_dict(orient="records"):
+            try:
+                result = self._process_row(
+                    row, league, league_id, season, season_id
+                )
+                counts["processed"] += 1
+                if result == "enriched":
+                    counts["enriched"] += 1
+                elif result == "unmatched":
+                    counts["unmatched"] += 1
+                else:
+                    counts["skipped"] += 1
+            except Exception as exc:
+                player_name = row.get("player", row.get("name", "unknown"))
+                logger.error(
+                    f"Failed processing '{player_name}': {exc}", exc_info=True
+                )
+                counts["errors"] += 1
+
+        # ── After count assertion ─────────────────────────────────────────────
+        rows_after = self._count_understat_enriched(league_id, season_id)
+        if rows_after < rows_before:
+            logger.error(
+                f"ASSERTION FAILED: enriched rows decreased! "
+                f"before={rows_before}, after={rows_after}"
+            )
+            counts["errors"] += 1
+
+        logger.info(
+            f"[run={run_id}] Understat enriched rows: "
+            f"{rows_before} → {rows_after} "
+            f"(+{rows_after - rows_before})"
+        )
+
+        status = "success" if counts["errors"] == 0 else "partial"
+        self.finish_run(run_id, status=status, **counts)
+        logger.info(
+            f"[run={run_id}] Done: {counts['enriched']} enriched, "
+            f"{counts['unmatched']} unmatched, {counts['errors']} errors"
+        )
+        return counts
+
+    # ── Data fetch ────────────────────────────────────────────────────────────
+
+    def _fetch(self, us_league: str, us_key: str) -> pd.DataFrame:
+        """Fetch player season stats from soccerdata Understat."""
+        import soccerdata as sd
+
+        us = sd.Understat(leagues=us_league, seasons=us_key)
+        df = us.read_player_season_stats()
+        logger.info(
+            f"soccerdata returned {len(df)} player rows "
+            f"for {us_league!r} {us_key!r}"
+        )
+        return df
+
+    # ── Per-row processing ────────────────────────────────────────────────────
+
+    def _process_row(
+        self,
+        row: Dict,
+        league: str,
+        league_id: int,
+        season: str,
+        season_id: int,
+    ) -> str:
+        """
+        Resolve + enrich one player row.
+
+        Returns 'enriched', 'unmatched', or 'skipped'.
+        """
+        # Extract key fields from soccerdata row
+        # soccerdata may use 'player' or 'name' as the player name column
+        player_name = (
+            row.get("player") or row.get("name") or ""
+        ).strip()
+        team_name   = (row.get("team") or "").strip()
+        position    = str(row.get("position") or "")
 
         if not player_name:
-            return
+            return "skipped"
 
-        # Find or create player
-        player_id = self._find_or_create_player(player_name, understat_id)
+        # Resolve identity
+        db_player_id = self._resolver.resolve(
+            name=player_name,
+            team_name=team_name,
+            league_name=league,
+            season_name=season,
+            position=position if position else None,
+        )
 
-        # Find team
-        team_id = self._find_team_by_name(team_name, league_id)
-
-        # Update player_season_stats with xG data
-        query = """
-            INSERT INTO player_season_stats (
-                player_id, team_id, season_id, league_id,
-                matches_played, minutes, goals, assists,
-                shots, key_passes,
-                xg, xa, npxg, xg_chain, xg_buildup,
-                yellow_cards, red_cards,
-                data_source_id, last_updated
+        if db_player_id is None:
+            counts_unmatched = self.log_unmatched(
+                source="understat",
+                player_name=player_name,
+                team_name=team_name,
+                league_name=league,
+                season_name=season,
+                reason="no_match",
             )
-            VALUES (
-                :player_id, :team_id, :season_id, :league_id,
-                :matches, :minutes, :goals, :assists,
-                :shots, :key_passes,
-                :xg, :xa, :npxg, :xg_chain, :xg_buildup,
-                :yellow, :red,
-                :src, CURRENT_TIMESTAMP
+            return "unmatched"
+
+        # Find the team_id for this player in this season
+        # Prefer to get it from the existing player_season_stats row
+        db_team_id = self._get_team_id_for_player_season(
+            db_player_id, league_id, season_id
+        )
+        if db_team_id is None:
+            # Fallback: look up by team name in this league
+            db_team_id = self._get_team_id_by_name(team_name, league_id)
+
+        if db_team_id is None:
+            logger.warning(
+                f"No team_id for '{player_name}' (team={team_name!r}) in "
+                f"{league} {season} — skipping xG upsert"
             )
-            ON CONFLICT (player_id, team_id, season_id, league_id) DO UPDATE SET
-                xg = COALESCE(EXCLUDED.xg, player_season_stats.xg),
-                xa = COALESCE(EXCLUDED.xa, player_season_stats.xa),
-                npxg = COALESCE(EXCLUDED.npxg, player_season_stats.npxg),
-                xg_chain = COALESCE(EXCLUDED.xg_chain, player_season_stats.xg_chain),
-                xg_buildup = COALESCE(EXCLUDED.xg_buildup, player_season_stats.xg_buildup),
-                last_updated = CURRENT_TIMESTAMP
+            return "skipped"
+
+        # Build xG params
+        xg_params = self._extract_xg(row)
+        if not xg_params:
+            return "skipped"
+
+        self._upsert_xg(
+            db_player_id, db_team_id, season_id, league_id, xg_params
+        )
+        return "enriched"
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _extract_xg(self, row: Dict) -> Optional[Dict]:
+        """Extract xG fields from a soccerdata row dict."""
+        params = {}
+        for sd_col, db_col in UNDERSTAT_COL_MAP.items():
+            val = row.get(sd_col)
+            if val is not None:
+                try:
+                    params[db_col] = float(val)
+                except (TypeError, ValueError):
+                    pass
+        return params if params else None
+
+    def _upsert_xg(
+        self,
+        player_id: int,
+        team_id: int,
+        season_id: int,
+        league_id: int,
+        xg_params: Dict,
+    ) -> None:
+        """
+        Upsert only the xG columns into player_season_stats.
+        Creates the row if it doesn't exist, updates otherwise.
+        Uses COALESCE so SofaScore values are never overwritten by NULL.
+        """
+        col_names = list(xg_params.keys())
+
+        insert_cols = (
+            "player_id, team_id, season_id, league_id, "
+            + ", ".join(col_names)
+            + ", understat_collected, last_updated"
+        )
+        insert_vals = (
+            ":player_id, :team_id, :season_id, :league_id, "
+            + ", ".join(f":{c}" for c in col_names)
+            + ", TRUE, NOW()"
+        )
+        # On conflict: only update non-null incoming values (COALESCE guard)
+        update_clauses = (
+            ", ".join(
+                f"{c} = COALESCE(EXCLUDED.{c}, player_season_stats.{c})"
+                for c in col_names
+            )
+            + ", understat_collected = TRUE"
+            + ", last_updated = NOW()"
+        )
+
+        sql = f"""
+            INSERT INTO player_season_stats ({insert_cols})
+            VALUES ({insert_vals})
+            ON CONFLICT (player_id, team_id, season_id, league_id)
+            DO UPDATE SET {update_clauses}
         """
 
         params = {
-            'player_id': player_id,
-            'team_id': team_id,
-            'season_id': season_id,
-            'league_id': league_id,
-            'matches': player_data.get('games', 0),
-            'minutes': player_data.get('minutes', 0),
-            'goals': player_data.get('goals', 0),
-            'assists': player_data.get('assists', 0),
-            'shots': player_data.get('shots', 0),
-            'key_passes': player_data.get('key_passes', 0),
-            'xg': player_data.get('xg'),
-            'xa': player_data.get('xa'),
-            'npxg': player_data.get('npxg'),
-            'xg_chain': player_data.get('xg_chain'),
-            'xg_buildup': player_data.get('xg_buildup'),
-            'yellow': player_data.get('yellow_cards', 0),
-            'red': player_data.get('red_cards', 0),
-            'src': self.source_id
+            "player_id": player_id,
+            "team_id":   team_id,
+            "season_id": season_id,
+            "league_id": league_id,
+            **xg_params,
         }
 
-        try:
-            self.db.execute_query(query, params, fetch=False)
-            self.stats['players_enriched'] += 1
-        except Exception as e:
-            logger.error(f"Error saving player stats for {player_name}: {e}")
+        self.db.execute_query(sql, params, fetch=False)
 
-    def _get_league_id(self, league_key: str) -> Optional[int]:
-        """Get database league ID from league key."""
-        if league_key in self._league_cache:
-            return self._league_cache[league_key]
-
-        # Map league keys to database names
-        league_name_map = {
-            'premier-league': 'Premier League',
-            'la-liga': 'La Liga',
-            'serie-a': 'Serie A',
-            'bundesliga': 'Bundesliga',
-            'ligue-1': 'Ligue 1',
-        }
-
-        db_name = league_name_map.get(league_key)
-        if not db_name:
-            return None
-
-        query = "SELECT league_id FROM leagues WHERE league_name = :name"
-        result = self.db.execute_query(query, {'name': db_name}, fetch=True)
-
-        if result:
-            league_id = result[0][0]
-            self._league_cache[league_key] = league_id
-            return league_id
-
-        return None
-
-    def _get_season_id(self, start_year: int) -> Optional[int]:
-        """Get database season ID from start year."""
-        # Convert 2024 -> "2024-25"
-        end_year = start_year + 1
-        season_name = f"{start_year}-{str(end_year)[-2:]}"
-
-        query = "SELECT season_id FROM seasons WHERE season_name = :name"
-        result = self.db.execute_query(query, {'name': season_name}, fetch=True)
-
-        return result[0][0] if result else None
-
-    def _find_or_create_team(self, name: str, league_id: int, understat_id: int) -> int:
-        """Find existing team or create new one."""
-        cache_key = (name, league_id)
-        if cache_key in self._team_cache:
-            return self._team_cache[cache_key]
-
-        # Try to find by name and league
-        query = """
-            SELECT team_id FROM teams
-            WHERE team_name = :name AND league_id = :lid
-        """
-        result = self.db.execute_query(query, {'name': name, 'lid': league_id}, fetch=True)
-
-        if result:
-            team_id = result[0][0]
-            # Update Understat ID if not set
-            self.db.execute_query(
-                "UPDATE teams SET understat_id = :uid WHERE team_id = :tid AND understat_id IS NULL",
-                {'uid': understat_id, 'tid': team_id},
-                fetch=False
-            )
-        else:
-            # Create new team
-            query = """
-                INSERT INTO teams (team_name, league_id, understat_id)
-                VALUES (:name, :lid, :uid)
-                RETURNING team_id
+    def _get_team_id_for_player_season(
+        self,
+        player_id: int,
+        league_id: int,
+        season_id: int,
+    ) -> Optional[int]:
+        """Find team_id from existing player_season_stats (from SofaScore run)."""
+        rows = self.db.execute_query(
             """
-            result = self.db.execute_query(
-                query,
-                {'name': name, 'lid': league_id, 'uid': understat_id},
-                fetch=True
-            )
-            team_id = result[0][0]
-            self.stats['new_teams'] += 1
+            SELECT team_id FROM player_season_stats
+             WHERE player_id  = :pid
+               AND league_id  = :lid
+               AND season_id  = :sid
+             LIMIT 1
+            """,
+            {"pid": player_id, "lid": league_id, "sid": season_id},
+            fetch=True,
+        )
+        return rows[0][0] if rows else None
 
-        self._team_cache[cache_key] = team_id
-        return team_id
-
-    def _find_team_by_name(self, name: str, league_id: int) -> Optional[int]:
-        """Find team by name in league."""
-        cache_key = (name, league_id)
-        if cache_key in self._team_cache:
-            return self._team_cache[cache_key]
-
-        query = """
-            SELECT team_id FROM teams
-            WHERE team_name = :name AND league_id = :lid
-        """
-        result = self.db.execute_query(query, {'name': name, 'lid': league_id}, fetch=True)
-
-        if result:
-            team_id = result[0][0]
-            self._team_cache[cache_key] = team_id
-            return team_id
-
-        return None
-
-    def _find_or_create_player(self, name: str, understat_id: int) -> int:
-        """Find existing player or create new one."""
-        if understat_id in self._player_cache:
-            return self._player_cache[understat_id]
-
-        # Try to find by Understat ID first
-        query = "SELECT player_id FROM players WHERE understat_id = :uid"
-        result = self.db.execute_query(query, {'uid': understat_id}, fetch=True)
-
-        if result:
-            player_id = result[0][0]
-        else:
-            # Try by name
-            query = "SELECT player_id FROM players WHERE player_name = :name"
-            result = self.db.execute_query(query, {'name': name}, fetch=True)
-
-            if result:
-                player_id = result[0][0]
-                # Update Understat ID
-                self.db.execute_query(
-                    "UPDATE players SET understat_id = :uid WHERE player_id = :pid",
-                    {'uid': understat_id, 'pid': player_id},
-                    fetch=False
-                )
-            else:
-                # Create new player
-                query = """
-                    INSERT INTO players (player_name, understat_id)
-                    VALUES (:name, :uid)
-                    RETURNING player_id
-                """
-                result = self.db.execute_query(
-                    query,
-                    {'name': name, 'uid': understat_id},
-                    fetch=True
-                )
-                player_id = result[0][0]
-                self.stats['new_players'] += 1
-
-        self._player_cache[understat_id] = player_id
-        return player_id
-
-    def enrich_player_matches(self, player_id: int, understat_player_id: int) -> int:
-        """
-        Enrich player match records with Understat xG data.
-
-        Args:
-            player_id: Database player ID
-            understat_player_id: Understat player ID
-
-        Returns:
-            Number of matches enriched
-        """
-        matches = self.client.get_player_matches(understat_player_id)
-        enriched = 0
-
-        for match in matches:
-            # Try to find matching match in our database by date and teams
-            # This is approximate matching - could be improved with better ID mapping
-
-            # Update player_match_stats if we find a match
-            query = """
-                UPDATE player_match_stats
-                SET xg = :xg,
-                    xa = :xa,
-                    npxg = :npxg,
-                    xg_chain = :xg_chain,
-                    xg_buildup = :xg_buildup
-                WHERE player_id = :pid
-                  AND match_id IN (
-                      SELECT m.match_id FROM matches m
-                      WHERE m.match_date = :date
-                  )
+    def _get_team_id_by_name(
+        self, team_name: str, league_id: int
+    ) -> Optional[int]:
+        """Fallback: find team_id by name in the league."""
+        rows = self.db.execute_query(
             """
+            SELECT team_id FROM teams
+             WHERE immutable_unaccent(lower(team_name))
+                   = immutable_unaccent(lower(:name))
+               AND league_id = :lid
+             LIMIT 1
+            """,
+            {"name": team_name, "lid": league_id},
+            fetch=True,
+        )
+        return rows[0][0] if rows else None
 
-            try:
-                match_date = match.get('date')
-                if match_date:
-                    self.db.execute_query(query, {
-                        'pid': player_id,
-                        'date': match_date,
-                        'xg': match.get('xg'),
-                        'xa': match.get('xa'),
-                        'npxg': match.get('npxg'),
-                        'xg_chain': match.get('xg_chain'),
-                        'xg_buildup': match.get('xg_buildup'),
-                    }, fetch=False)
-                    enriched += 1
-            except Exception as e:
-                logger.debug(f"Could not enrich match: {e}")
+    def _count_understat_enriched(
+        self, league_id: int, season_id: int
+    ) -> int:
+        """Count rows already enriched by Understat for this league/season."""
+        rows = self.db.execute_query(
+            """
+            SELECT COUNT(*) FROM player_season_stats
+             WHERE league_id          = :lid
+               AND season_id          = :sid
+               AND understat_collected = TRUE
+            """,
+            {"lid": league_id, "sid": season_id},
+            fetch=True,
+        )
+        return int(rows[0][0]) if rows else 0
 
-        return enriched
+    # ── Convenience ───────────────────────────────────────────────────────────
 
-    def process_all_leagues(self, season: int) -> Dict:
+    def run_all(
+        self,
+        leagues: Optional[List[str]] = None,
+        seasons: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
-        Process all supported leagues for a season.
-
-        Args:
-            season: Season start year
-
-        Returns:
-            Combined statistics
+        Run for multiple leagues and seasons (defaults to all supported).
         """
-        for league in self.SUPPORTED_LEAGUES:
-            try:
-                self.process_league_season(league, season)
-            except Exception as e:
-                logger.error(f"Error processing {league}: {e}")
-                self.stats['errors'].append(f"{league}: {str(e)}")
+        if leagues is None:
+            leagues = self.SUPPORTED_LEAGUES
+        if seasons is None:
+            from scrapers.sofascore.constants import SEASON_NAME_TO_YEAR
+            seasons = list(SEASON_NAME_TO_YEAR.keys())
 
-        return self.stats
-
-    def get_statistics(self) -> Dict:
-        """Return processing statistics."""
-        return {
-            **self.stats,
-            'client_stats': self.client.get_statistics()
+        totals = {
+            "processed": 0, "enriched": 0,
+            "skipped":   0, "errors":   0, "unmatched": 0,
         }
+        for league in leagues:
+            for season in seasons:
+                result = self.run(league, season)
+                for k in totals:
+                    totals[k] += result.get(k, 0)
 
-    def reset_statistics(self):
-        """Reset processing statistics."""
-        self.stats = {
-            'players_enriched': 0,
-            'teams_enriched': 0,
-            'new_players': 0,
-            'new_teams': 0,
-            'errors': []
-        }
+        return totals

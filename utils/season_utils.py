@@ -3,10 +3,12 @@ Season Name Formatting Utilities
 
 Provides consistent season name conversion between different data sources:
 - Database format: '2024-25' (standard format used in DB)
-- FotMob format: '2024/2025' (full years with slash)
-- StatsBomb format: '2020/2021' (same as FotMob)
-- API-Football format: '2024' (single year)
-- Understat format: '2024' (single year)
+- Understat format: '2024' (single year, active source)
+
+Historical / dead-source formats (methods retained for reference only):
+- FotMob format: '2024/2025'  — FotMob is DEAD (x-fm-req auth added March 2026)
+- StatsBomb format: '2020/2021' — StatsBomb removed March 2026
+- API-Football format: '2024'  — API-Football not integrated (100 req/day limit)
 
 Usage:
     from utils.season_utils import SeasonUtils
@@ -15,11 +17,8 @@ Usage:
     db_format = SeasonUtils.to_db_format('2024/2025')  # Returns '2024-25'
     db_format = SeasonUtils.to_db_format('2024')       # Returns '2024-25'
 
-    # Convert to FotMob format
-    fotmob_format = SeasonUtils.to_fotmob_format('2024-25')  # Returns '2024/2025'
-
-    # Convert to API-Football format (single year)
-    api_format = SeasonUtils.to_single_year('2024-25')  # Returns '2024'
+    # Convert to Understat format (single year)
+    us_format = SeasonUtils.to_single_year('2024-25')  # Returns 2024
 """
 
 import re
@@ -144,13 +143,16 @@ class SeasonUtils:
     @classmethod
     def to_fotmob_format(cls, season: str) -> str:
         """
-        Convert any season format to FotMob format (2024/2025).
+        Convert any season format to slash format (2024/2025).
+
+        HISTORICAL — dead source: FotMob added x-fm-req HMAC auth (March 2026).
+        Method retained for reference; do not use in new ETL code.
 
         Args:
             season: Season string in any format
 
         Returns:
-            Season in FotMob format (e.g., '2024/2025')
+            Season in slash format (e.g., '2024/2025')
         """
         try:
             start, end = cls.parse_years(season)
@@ -162,15 +164,16 @@ class SeasonUtils:
     @classmethod
     def to_statsbomb_format(cls, season: str) -> str:
         """
-        Convert any season format to StatsBomb format (2020/2021).
+        Convert any season format to slash format (2020/2021).
 
-        Same as FotMob format.
+        HISTORICAL — dead source: StatsBomb integration removed March 2026.
+        Method retained for reference; do not use in new ETL code.
 
         Args:
             season: Season string in any format
 
         Returns:
-            Season in StatsBomb format (e.g., '2020/2021')
+            Season in slash format (e.g., '2020/2021')
         """
         return cls.to_fotmob_format(season)
 
@@ -197,7 +200,11 @@ class SeasonUtils:
     @classmethod
     def to_api_football_format(cls, season: str) -> str:
         """
-        Convert any season format to API-Football format (single year string).
+        Convert any season format to single-year string format.
+
+        HISTORICAL — dead source: API-Football not integrated (100 req/day free
+        tier is insufficient; removed March 2026).
+        Method retained for reference; do not use in new ETL code.
 
         Args:
             season: Season string in any format
@@ -230,7 +237,7 @@ class SeasonUtils:
         If current month is < August, we're in season YYYY-1-YY.
 
         Args:
-            fmt: Output format ('db', 'fotmob', 'single')
+            fmt: Output format ('db', 'single'; 'fotmob' retained for historical compat)
 
         Returns:
             Current season in requested format
