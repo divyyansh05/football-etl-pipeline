@@ -149,6 +149,28 @@ Seasons: 2022-23, 2023-24, 2024-25, 2025-26
 
 Run: `python scripts/quality_audit.py`
 
+## Current Data State (2026-03-31)
+
+| League         | Season  | Players | Understat xG | Status |
+|----------------|---------|---------|--------------|--------|
+| Premier League | 2022-23 | 174     | 162 rows     | ✅ complete |
+| Premier League | 2023-24 | 184     | 170 rows     | ✅ complete |
+| Premier League | 2024-25 | 182     | 168 rows     | ✅ complete |
+| Premier League | 2025-26 | 182     | 173 rows     | ✅ complete |
+| La Liga        | 2022-23 | 189     | 162 rows     | ✅ complete |
+| La Liga        | 2023-24 | 105     |  91 rows     | ⚠️ partial (403 mid-run) |
+| La Liga        | 2024-25 | 0       | 0 rows       | ⏳ pending |
+| La Liga        | 2025-26 | 0       | 0 rows       | ⏳ pending |
+| Serie A        | all 4   | 0       | 0 rows       | ⏳ pending |
+| Bundesliga     | all 4   | 0       | 0 rows       | ⏳ pending |
+| Ligue 1        | all 4   | 0       | 0 rows       | ⏳ pending |
+
+**Total**: 632 players, 1016 PSS rows, 1152 ELO records
+
+**Auto-retry**: `com.football-etl.backfill` LaunchAgent runs every hour.
+State in `data/backfill_state.json`. Logs in `logs/smart_backfill.log`.
+When SofaScore block lifts, remaining 14 league-seasons will populate automatically.
+
 ## Notes for AI Agents
 
 - **Root CLAUDE.md is a legacy artifact** — it describes the old FotMob/API-Football

@@ -114,3 +114,7 @@ services:
 
 volumes:
   postgres_data:
+    # Reference the volume created by the original compose stack (data-etl-pipeline_postgres_data).
+    # This preserves all collected data across compose project renames.
+    name: data-etl-pipeline_postgres_data
+    external: true

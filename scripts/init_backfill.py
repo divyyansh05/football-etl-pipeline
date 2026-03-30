@@ -54,7 +54,9 @@ DEFAULT_ELO_DATES = [
     f"2026-{m:02d}-01" for m in range(1, 7)
 ]
 
-POPULATED_THRESHOLD = 300  # min players to consider a league/season populated
+POPULATED_THRESHOLD = 150  # min players to consider a league/season populated
+# NOTE: top-players/overall yields ~170-190 unique players per league/season.
+# 300 was wrong (nothing would ever be skipped). 150 is safely below real counts.
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 

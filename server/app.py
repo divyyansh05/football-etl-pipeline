@@ -382,7 +382,7 @@ def get_data_health():
     health_metrics['latest_match_date'] = str(last_match) if last_match else None
 
     last_stat_update = db.execute_query("""
-        SELECT MAX(updated_at) FROM player_season_stats
+        SELECT MAX(last_updated) FROM player_season_stats
     """, fetch=True)[0][0]
     health_metrics['last_stat_update'] = str(last_stat_update) if last_stat_update else None
 
@@ -924,7 +924,7 @@ def get_pipeline_latest_data():
 
     freshness = db.execute_query("""
         SELECT l.league_name, s.season_name,
-               MAX(pss.updated_at) as last_updated,
+               MAX(pss.last_updated) as last_updated,
                COUNT(pss.stat_id) as record_count
         FROM player_season_stats pss
         JOIN leagues l ON pss.league_id = l.league_id

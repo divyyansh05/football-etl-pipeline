@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+    <!-- Unique label — must match the filename -->
+    <key>Label</key>
+    <string>com.football-etl.backfill</string>
+
+    <!-- Run smart_backfill.py with the project's Python interpreter -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>PYTHON_PLACEHOLDER</string>
+        <string>PROJECT_PLACEHOLDER/scripts/smart_backfill.py</string>
+    </array>
+
+    <!-- Always run from the project root so relative imports work -->
+    <key>WorkingDirectory</key>
+    <string>PROJECT_PLACEHOLDER</string>
+
+    <!-- Run every hour (3600 seconds).
+         If the Mac was asleep when the interval fired, launchd runs the job
+         immediately on the next wake — no missed runs. -->
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <!-- Do NOT run immediately when the plist is loaded (we may still be blocked) -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Logs — smart_backfill.py also writes to logs/smart_backfill.log -->
+    <key>StandardOutPath</key>
+    <string>PROJECT_PLACEHOLDER/logs/launchagent_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>PROJECT_PLACEHOLDER/logs/launchagent_stderr.log</string>
+
+    <!-- Ensure system Python tools are findable (caffeinate lives in /usr/bin) -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:CONDA_PLACEHOLDER/bin</string>
+        <key>HOME</key>
+        <string>HOME_PLACEHOLDER</string>
+    </dict>
+
+    <!-- If the job crashes, don't loop-restart immediately; wait for next interval -->
+    <key>ThrottleInterval</key>
+    <integer>600</integer>
+
+</dict>
+</plist>

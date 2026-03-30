@@ -105,7 +105,7 @@ SOFASCORE_POSITION_MAP = {
 # No WNG distinction — assign based on context or leave as MID/FWD
 ```
 
-## CURRENT STATE (updated March 2026 — 14-step rebuild complete)
+## CURRENT STATE (updated March/April 2026 — Phase 3 complete)
 - Repo cleaned: ✅
 - .claude folder: ✅
 - Database schema v2: ✅ (14 tables, 4 views applied)
@@ -116,14 +116,32 @@ SOFASCORE_POSITION_MAP = {
 - SofaScoreETL canonical creator (etl/sofascore_etl.py): ✅
 - UnderstatETL enrichment (etl/understat_etl.py): ✅ (smoke: 521 processed)
 - ClubEloETL (etl/clubelo_etl.py): ✅ (fixed league format + NaN rank; smoke: 96 records)
-- server/app.py fixes (xag→xa, data_sources, stat_id, starts col removed, KNOWN_JOBS→4): ✅
-- Backfill script (scripts/init_backfill.py): ✅ (dry-run verified)
+- server/app.py fixes (xag→xa, data_sources, stat_id, starts col removed, KNOWN_JOBS→4, updated_at→last_updated): ✅
+- Backfill script (scripts/init_backfill.py): ✅ (POPULATED_THRESHOLD fixed: 300→150)
 - Quality audit (scripts/quality_audit.py): ✅ (all gates PASS)
 - Scheduler 4 jobs (scheduler/__init__.py + jobs.py + run_scheduler.py): ✅
-- Docker 5 services (docker-compose.yml): ✅ (backfill profile, gunicorn, soccerdata OK)
+- Docker stack: ✅ (db + migrate + scheduler + server all healthy; volume: data-etl-pipeline_postgres_data external)
 - Unit tests 64 passing: ✅
 - Dead files removed: etl/fotmob_etl.py, scrapers/fotmob/, tests/test_parsers.py ✅
 - stale refs: xag→xa in data_quality.py + conftest.py ✅
+- smart_backfill.py + LaunchAgent: ✅ (hourly auto-retry with 26h cooldown on 403)
+
+## CURRENT DATA STATE (as of 2026-03-31)
+
+| League         | Season  | Players | SS  | US  | xG rows |
+|----------------|---------|---------|-----|-----|---------|
+| Premier League | 2022-23 | 174     | 173 | 162 | 162     |
+| Premier League | 2023-24 | 184     | 184 | 170 | 170     |
+| Premier League | 2024-25 | 182     | 182 | 168 | 168     |
+| Premier League | 2025-26 | 182     | 182 | 173 | 173     |
+| La Liga        | 2022-23 | 189     | 189 | 162 | 162     |
+| La Liga        | 2023-24 | 105     | 105 |  91 |  91     | ← partial (403 interrupted)
+| La Liga 2024-25, 2025-26 | — | 0  |  0  |  0  |  0      | ← pending
+| Serie A, Bundesliga, Ligue 1 (all 4) | — | 0 | 0 | 0 | 0 | ← pending
+
+Total: 632 unique players, 1016 PSS rows, 1152 ELO records
+All pending leagues: LaunchAgent (com.football-etl.backfill) retrying automatically every hour.
+Next retry: 2026-04-01 ~01:06 UTC
 
 ## KEY DECISIONS (with reasons)
 - FotMob: dead, added x-fm-req HMAC auth + ToS prohibits scraping
