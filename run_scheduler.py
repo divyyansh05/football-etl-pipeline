@@ -7,6 +7,7 @@ Weekly cadence (UTC):
   Tuesday   05:00  — Understat xG        (enrichment)
   Wednesday 05:00  — ClubElo ELO         (independent)
   Thursday  05:00  — Catch-up run        (fix gaps from Mon/Tue)
+  Saturday  06:00  — Analytics scores    (per-90 + performance scoring)
 
 Usage:
     python run_scheduler.py              # start blocking scheduler
@@ -15,6 +16,7 @@ Usage:
     python run_scheduler.py --run-now understat
     python run_scheduler.py --run-now clubelo
     python run_scheduler.py --run-now catchup
+    python run_scheduler.py --run-now scores
 """
 import argparse
 import logging
@@ -49,6 +51,7 @@ from scheduler.jobs import (
     understat_weekly_job,
     clubelo_weekly_job,
     catchup_weekly_job,
+    compute_scores_job,
 )
 
 JOB_MAP = {
@@ -56,6 +59,7 @@ JOB_MAP = {
     "understat":  understat_weekly_job,
     "clubelo":    clubelo_weekly_job,
     "catchup":    catchup_weekly_job,
+    "scores":     compute_scores_job,
 }
 
 
@@ -91,6 +95,14 @@ def setup_jobs(scheduler) -> None:
         day_of_week="thu", hour=5, minute=0,
     )
     console.print("[green]✓[/green] catchup_weekly → Thursday 05:00 UTC")
+
+    # Saturday 06:00 — Analytics scores
+    scheduler.add_weekly_job(
+        job_func=compute_scores_job,
+        job_id="compute_scores_weekly",
+        day_of_week="sat", hour=6, minute=0,
+    )
+    console.print("[green]✓[/green] compute_scores_weekly → Saturday 06:00 UTC")
 
 
 def display_jobs(scheduler) -> None:
@@ -132,7 +144,7 @@ def main():
     console.print(Panel.fit(
         "[bold blue]Football ETL Scheduler[/bold blue]\n"
         "Sources: SofaScore · Understat · ClubElo\n"
-        "Cadence: Mon SofaScore / Tue Understat / Wed ClubElo / Thu Catch-up",
+        "Cadence: Mon SofaScore / Tue Understat / Wed ClubElo / Thu Catch-up / Sat Scores",
         border_style="blue",
     ))
 

@@ -6,6 +6,7 @@ Schedule (UTC):
   Tuesday   05:00  — understat_weekly   : Understat xG enrichment
   Wednesday 05:00  — clubelo_weekly     : ClubElo ELO snapshot
   Thursday  05:00  — catchup_weekly     : Catch-up (re-runs Monday+Tuesday for failures)
+  Saturday  06:00  — compute_scores     : Recompute analytics performance scores
 
 No FotMob, API-Football, FBref, or StatsBomb — those sources are dead/removed.
 """
@@ -245,3 +246,51 @@ def catchup_weekly_job(season: Optional[str] = None) -> Dict[str, Any]:
 
     logger.info(f"catchup_weekly_job done: {totals}")
     return totals
+
+
+# ── Job 5: Analytics score computation ───────────────────────────────────────
+
+def compute_scores_job() -> Dict[str, Any]:
+    """
+    Recompute analytics performance scores after weekly enrichment.
+
+    Runs Saturday 06:00 UTC — after Mon/Tue/Wed/Thu pipeline jobs have
+    updated player_season_stats with the latest SofaScore and Understat data.
+
+    Calls analytics/compute_scores.py via subprocess so it runs in a clean
+    Python process with its own sys.path, matching how it is invoked manually.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    project_root = str(Path(__file__).parent.parent)
+    logger.info("compute_scores_job: starting analytics score recomputation")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, 'analytics/compute_scores.py'],
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+        )
+        if result.returncode != 0:
+            logger.error(
+                f"Score computation failed (exit {result.returncode}): "
+                f"{result.stderr[:500]}"
+            )
+            return {
+                "job": "compute_scores",
+                "success": False,
+                "error": result.stderr[:500],
+                "errors": 1,
+            }
+
+        # Log last 500 chars of stdout for summary visibility
+        stdout_tail = result.stdout[-500:] if result.stdout else ""
+        logger.info(f"compute_scores_job complete:\n{stdout_tail}")
+        return {"job": "compute_scores", "success": True, "errors": 0}
+
+    except Exception as exc:
+        logger.error(f"compute_scores_job error: {exc}", exc_info=True)
+        return {"job": "compute_scores", "success": False, "error": str(exc), "errors": 1}
