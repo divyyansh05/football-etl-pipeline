@@ -2,13 +2,15 @@
 Scheduled job definitions — active sources only.
 
 Schedule (UTC):
-  Monday    05:00  — sofascore_weekly   : SofaScore current-season refresh
-  Tuesday   05:00  — understat_weekly   : Understat xG enrichment
-  Wednesday 05:00  — clubelo_weekly     : ClubElo ELO snapshot
-  Thursday  05:00  — catchup_weekly     : Catch-up (re-runs Monday+Tuesday for failures)
-  Saturday  06:00  — compute_scores     : Recompute analytics performance scores
+  Monday    05:00  — sofascore_weekly      : SofaScore current-season refresh
+  Tuesday   05:00  — understat_weekly      : Understat xG enrichment
+  Wednesday 05:00  — clubelo_weekly        : ClubElo ELO snapshot
+  Thursday  05:00  — catchup_weekly        : Catch-up (re-runs Monday+Tuesday for failures)
+  Friday    05:00  — fotmob_squads_weekly  : FotMob squad coverage (fotmob_id + injury status)
+  Saturday  06:00  — compute_scores        : Recompute analytics performance scores
 
-No FotMob, API-Football, FBref, or StatsBomb — those sources are dead/removed.
+FotMob source note: uses __NEXT_DATA__ extraction from www.fotmob.com (no auth required).
+api.fotmob.com is dead (x-fm-req HMAC auth added) — do not use it.
 """
 import logging
 from datetime import date, timedelta
@@ -248,14 +250,71 @@ def catchup_weekly_job(season: Optional[str] = None) -> Dict[str, Any]:
     return totals
 
 
-# ── Job 5: Analytics score computation ───────────────────────────────────────
+# ── Job 5: FotMob squads weekly ───────────────────────────────────────────────
+
+def fotmob_squads_weekly_job(
+    leagues: Optional[List[str]] = None,
+    season: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Weekly FotMob squad coverage — stamps fotmob_id, updates injury status,
+    and fills bio fields (height, DOB, shirt_number) for all matched players.
+
+    Runs Friday 05:00 UTC — after the full Mon/Tue/Wed/Thu pipeline completes.
+    Operates on the current season only (FotMob shows live squad, not historical).
+
+    Uses __NEXT_DATA__ extraction from www.fotmob.com (no auth required).
+    api.fotmob.com (HMAC auth) is NOT used.
+    """
+    from etl.fotmob_squad_etl import FotMobSquadETL
+
+    if leagues is None:
+        leagues = ALL_LEAGUES
+    if season is None:
+        season = _current_season()
+
+    logger.info(f"fotmob_squads_weekly_job: {len(leagues)} leagues, season={season}")
+
+    db  = _get_db()
+    etl = FotMobSquadETL(db=db)
+
+    totals: Dict[str, Any] = {
+        "job": "fotmob_squads_weekly",
+        "season": season,
+        "processed": 0, "matched": 0, "enriched": 0,
+        "unmatched": 0, "unmatched_teams": 0, "errors": 0,
+    }
+
+    for league in leagues:
+        try:
+            result = etl.run(league, season)
+            for k in ("processed", "matched", "enriched", "unmatched",
+                      "unmatched_teams", "errors"):
+                totals[k] += result.get(k, 0)
+            logger.info(
+                f"  {league}: matched={result.get('matched', 0)}, "
+                f"enriched={result.get('enriched', 0)}, "
+                f"unmatched={result.get('unmatched', 0)}, "
+                f"errors={result.get('errors', 0)}"
+            )
+        except Exception as exc:
+            logger.error(
+                f"FotMob squads job failed [{league}]: {exc}", exc_info=True
+            )
+            totals["errors"] += 1
+
+    logger.info(f"fotmob_squads_weekly_job done: {totals}")
+    return totals
+
+
+# ── Job 6: Analytics score computation ───────────────────────────────────────
 
 def compute_scores_job() -> Dict[str, Any]:
     """
     Recompute analytics performance scores after weekly enrichment.
 
-    Runs Saturday 06:00 UTC — after Mon/Tue/Wed/Thu pipeline jobs have
-    updated player_season_stats with the latest SofaScore and Understat data.
+    Runs Saturday 06:00 UTC — after Mon/Tue/Wed/Thu/Fri pipeline jobs have
+    updated player_season_stats with the latest data.
 
     Calls analytics/compute_scores.py via subprocess so it runs in a clean
     Python process with its own sys.path, matching how it is invoked manually.
