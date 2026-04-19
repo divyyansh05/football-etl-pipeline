@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+data/raw/
+data/wyscout_session.json
+scrapers/wyscout/.token_cache
+logs/
+*.log
+.DS_Store
