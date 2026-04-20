@@ -119,7 +119,7 @@ def _gql(query: str, variables: dict = None, retried=False):
 def get_season_id(competition_id: int) -> tuple:
     """Returns (current_season_id, previous_season_id)."""
     r = _gql('''
-        query($compId: Int!) {
+        query($compId: ID!) {
             competitions(id: [$compId]) {
                 currentSeason { id name }
                 previousSeason { id name }
@@ -142,7 +142,7 @@ def get_all_players_for_season(competition_id: int,
     Returns list of {playerId, name, position, team, minutes}.
     """
     r = _gql('''
-        query($seasonIds: [Int!]!, $limit: Int!) {
+        query($seasonIds: [ID!]!, $limit: Int!) {
             playersLeaderboard(
                 param: minutes_on_field
                 seasonIds: $seasonIds
@@ -175,7 +175,7 @@ def get_all_teams_for_season(competition_id: int,
                               season_id: int) -> list:
     """Get all teams in a competition season."""
     r = _gql('''
-        query($seasonIds: [Int!]!) {
+        query($seasonIds: [ID!]!) {
             teamsLeaderboard(
                 param: goal
                 seasonIds: $seasonIds

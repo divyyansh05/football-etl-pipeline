@@ -51,6 +51,8 @@ def _login_and_extract() -> str:
 
     logger.info(f'Logging into Wyscout as {email}...')
 
+    import time as _time
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
@@ -59,30 +61,29 @@ def _login_and_extract() -> str:
         page.goto('https://wyscout.hudl.com/', timeout=30000)
         page.wait_for_load_state('networkidle')
 
-        # Handle login form — try multiple selectors
-        for email_sel in ['input[type="email"]', 'input[name="email"]',
-                          'input[placeholder*="mail"]',
-                          'input[placeholder*="Mail"]']:
-            try:
-                page.fill(email_sel, email)
-                break
-            except Exception:
-                continue
+        # Hudl Auth0 login — two-step flow at identity.hudl.com
+        # Step 1: Enter email/username and click Continue
+        page.fill('input[name="username"]', email, timeout=10000)
+        page.click('button:has-text("Continue")')
 
+        # Step 2: Wait for password field to become visible
+        page.wait_for_selector(
+            'input[type="password"]:visible', timeout=10000)
         page.fill('input[type="password"]', password)
+        page.click('button:has-text("Continue")')
 
-        for submit_sel in ['button[type="submit"]',
-                           'button:has-text("Log in")',
-                           'button:has-text("Sign in")',
-                           'input[type="submit"]']:
-            try:
-                page.click(submit_sel)
-                break
-            except Exception:
-                continue
-
+        # Wait for redirect back to wyscout app
         page.wait_for_url('**/app/**', timeout=30000)
         page.wait_for_load_state('networkidle')
+        _time.sleep(3)
+
+        # Handle "Multiple access attempt" — click Force login
+        force_btn = page.query_selector('button:has-text("Force login")')
+        if force_btn:
+            logger.info('Multiple access detected — forcing login...')
+            force_btn.click()
+            _time.sleep(5)
+            page.wait_for_load_state('networkidle')
 
         cookies = context.cookies()
         cookie_dict = {c['name']: c['value'] for c in cookies}
