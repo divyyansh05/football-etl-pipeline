@@ -1,0 +1,9 @@
+# football-data-platform uses the existing postgres container
+# from football-etl-pipeline (football_db on port 5434).
+# Database: football_platform
+# No separate container needed.
+#
+# To create DB manually:
+#   docker exec football_db psql -U postgres -c "CREATE DATABASE football_platform;"
+#   docker cp database/schema.sql football_db:/tmp/schema.sql
+#   docker exec football_db psql -U postgres -d football_platform -f /tmp/schema.sql
