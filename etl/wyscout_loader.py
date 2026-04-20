@@ -7,11 +7,66 @@ Never creates duplicate rows.
 import logging
 from pathlib import Path
 from database.connection import get_conn
-from scrapers.wyscout.parser import (
-    parse_player_xlsx, _safe_int, _safe_float
-)
+from scrapers.wyscout.parser import parse_player_xlsx
 
 logger = logging.getLogger(__name__)
+
+# All stat columns in player_match_stats (excluding identity/meta cols).
+# Order matters — must match INSERT VALUES placeholders.
+STAT_COLUMNS = [
+    'match_label', 'competition_name', 'match_date',
+    'position_played', 'minutes_played',
+    'total_actions', 'successful_actions',
+    'goals', 'assists', 'shots', 'shots_on_target',
+    'xg', 'xa',
+    'shot_assists', 'second_assists', 'key_passes',
+    'smart_passes', 'smart_passes_acc',
+    'through_passes', 'through_passes_acc',
+    'passes', 'passes_accurate',
+    'long_passes', 'long_passes_accurate',
+    'crosses', 'crosses_accurate',
+    'forward_passes', 'forward_passes_acc',
+    'back_passes', 'back_passes_acc',
+    'lateral_passes', 'lateral_passes_acc',
+    'passes_final_third', 'passes_final_third_acc',
+    'passes_penalty_area', 'passes_penalty_area_acc',
+    'dribbles', 'dribbles_successful',
+    'progressive_runs', 'touches_in_box',
+    'offensive_duels', 'offensive_duels_won',
+    'defensive_duels', 'defensive_duels_won',
+    'aerial_duels', 'aerial_duels_won',
+    'duels', 'duels_won',
+    'loose_ball_duels', 'loose_ball_duels_won',
+    'interceptions', 'sliding_tackles', 'sliding_tackles_succ',
+    'clearances',
+    'losses_own_half', 'recoveries_opp_half',
+    'recoveries', 'losses',
+    'fouls_committed', 'fouls_suffered', 'offsides',
+    'yellow_cards', 'red_cards',
+    'gk_saves', 'gk_saves_reflex', 'gk_super_saves',
+    'gk_conceded', 'gk_xg_save',
+    'gk_exits', 'gk_claims', 'gk_punches', 'gk_sweeps',
+    'gk_passes', 'gk_passes_acc',
+    'gk_goal_kicks', 'gk_short_kicks', 'gk_long_kicks',
+]
+
+# Build INSERT SQL once
+_IDENTITY_COLS = 'player_id, wyscout_player_id, wyscout_player_name'
+_ALL_COLS = f'{_IDENTITY_COLS}, ' + ', '.join(STAT_COLUMNS)
+_PLACEHOLDERS = ', '.join(['%s'] * (3 + len(STAT_COLUMNS)))
+_UPDATE_SET = ', '.join(
+    f'{c}=EXCLUDED.{c}' for c in STAT_COLUMNS
+    if c not in ('match_label', 'competition_name', 'match_date',
+                 'position_played', 'minutes_played')
+)
+
+INSERT_SQL = f'''
+    INSERT INTO player_match_stats ({_ALL_COLS})
+    VALUES ({_PLACEHOLDERS})
+    ON CONFLICT (wyscout_player_name, match_date,
+                 competition_name, minutes_played)
+    DO UPDATE SET {_UPDATE_SET}, updated_at=NOW()
+'''
 
 
 class WyscoutLoader:
@@ -83,100 +138,23 @@ class WyscoutLoader:
                 for rec in records:
                     match_date = rec.get('match_date')
                     competition = rec.get('competition_name', '')
-                    minutes = rec.get('minutes_played')
 
                     if not match_date or not competition:
                         continue
 
+                    # Build values tuple: identity + all stat columns
+                    values = (
+                        player_id, wyscout_player_id, player_name,
+                    ) + tuple(rec.get(col) for col in STAT_COLUMNS)
+
                     try:
-                        cur.execute('''
-                            INSERT INTO player_match_stats (
-                                player_id, wyscout_player_id,
-                                wyscout_player_name,
-                                match_label, competition_name,
-                                match_date, position_played,
-                                minutes_played,
-                                goals, assists,
-                                shots, shots_on_target,
-                                xg, xa,
-                                passes, passes_accurate,
-                                long_passes, long_passes_accurate,
-                                crosses, crosses_accurate,
-                                dribbles, dribbles_successful,
-                                duels, duels_won,
-                                aerial_duels, aerial_duels_won,
-                                defensive_duels, defensive_duels_won,
-                                offensive_duels, offensive_duels_won,
-                                interceptions, clearances,
-                                losses_own_half, recoveries_opp_half,
-                                fouls_committed, fouls_suffered,
-                                yellow_cards, red_cards,
-                                touches_in_box, progressive_runs,
-                                shot_assists, total_actions,
-                                successful_actions
-                            ) VALUES (
-                                %s,%s,%s,%s,%s,%s,%s,%s,
-                                %s,%s,%s,%s,%s,%s,%s,%s,
-                                %s,%s,%s,%s,%s,%s,%s,%s,
-                                %s,%s,%s,%s,%s,%s,%s,%s,
-                                %s,%s,%s,%s,%s,%s,%s,%s,
-                                %s,%s,%s
-                            )
-                            ON CONFLICT
-                            (wyscout_player_name, match_date,
-                             competition_name, minutes_played)
-                            DO UPDATE SET
-                                goals=EXCLUDED.goals,
-                                assists=EXCLUDED.assists,
-                                xg=EXCLUDED.xg,
-                                xa=EXCLUDED.xa,
-                                updated_at=NOW()
-                        ''', (
-                            player_id, wyscout_player_id, player_name,
-                            rec.get('match_label'), competition,
-                            match_date,
-                            rec.get('position_played'), minutes,
-                            _safe_int(rec.get('Goals', 0)),
-                            _safe_int(rec.get('Assists', 0)),
-                            _safe_int(rec.get('Shots / on target')),
-                            _safe_int(rec.get('Shots on target')),
-                            _safe_float(rec.get('xG')),
-                            _safe_float(rec.get('xA')),
-                            _safe_int(rec.get('Passes / accurate')),
-                            _safe_int(rec.get('Passes accurate')),
-                            _safe_int(rec.get('Long passes / accurate')),
-                            _safe_int(rec.get('Long passes accurate')),
-                            _safe_int(rec.get('Crosses / accurate')),
-                            _safe_int(rec.get('Crosses accurate')),
-                            _safe_int(rec.get('Dribbles / successful')),
-                            _safe_int(rec.get('Dribbles successful')),
-                            _safe_int(rec.get('Duels / won')),
-                            _safe_int(rec.get('Duels won')),
-                            _safe_int(rec.get('Aerial duels / won')),
-                            _safe_int(rec.get('Aerial duels won')),
-                            _safe_int(rec.get('Defensive duels / won')),
-                            _safe_int(rec.get('Defensive duels won')),
-                            _safe_int(rec.get('Offensive duels / won')),
-                            _safe_int(rec.get('Offensive duels won')),
-                            _safe_int(rec.get('Interceptions')),
-                            _safe_int(rec.get('Clearances')),
-                            _safe_int(rec.get('Losses / own half')),
-                            _safe_int(rec.get('Recoveries / opp. half')),
-                            _safe_int(rec.get('Fouls')),
-                            _safe_int(rec.get('Fouls suffered')),
-                            _safe_int(rec.get('Yellow card', 0)),
-                            _safe_int(rec.get('Red card', 0)),
-                            _safe_int(rec.get('Touches in penalty area')),
-                            _safe_int(rec.get('Progressive runs')),
-                            _safe_int(rec.get('Shot assists')),
-                            _safe_int(rec.get('Total actions')),
-                            _safe_int(rec.get('Successful actions')),
-                        ))
+                        cur.execute(INSERT_SQL, values)
                         loaded += 1
                     except Exception as e:
                         logger.error(
                             f'Row error for {player_name} '
                             f'{match_date}: {e}')
+                        conn.rollback()
                         continue
 
             conn.commit()
