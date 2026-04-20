@@ -77,3 +77,39 @@ def leaderboard(
     """, params + [min_minutes, limit], as_dict=True)
 
     return {"data": rows, "stat": stat}
+
+
+@router.get("/top-performers")
+def top_performers(
+    position: str = None,
+    competition: str = None,
+    limit: int = 20,
+):
+    """Top players by performance score."""
+    conditions = ["ps.performance_score IS NOT NULL"]
+    params = []
+
+    if position:
+        conditions.append("ps.position_group = %s")
+        params.append(position)
+    if competition:
+        conditions.append("c.name LIKE %s")
+        params.append(f"%{competition}%")
+
+    where = " AND ".join(conditions)
+
+    rows = query(f"""
+        SELECT p.player_id, p.name, p.wyscout_id,
+               ps.position_group, ps.performance_score,
+               ps.percentile_rank, ps.minutes_total, ps.matches_total,
+               ps.goals_p90, ps.assists_p90, ps.xg_p90, ps.xa_p90,
+               c.name as competition_name
+        FROM player_scores ps
+        JOIN players p ON p.player_id = ps.player_id
+        LEFT JOIN competitions c ON c.competition_id = ps.competition_id
+        WHERE {where}
+        ORDER BY ps.performance_score DESC
+        LIMIT %s
+    """, params + [limit], as_dict=True)
+
+    return {"data": rows}

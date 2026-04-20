@@ -289,6 +289,7 @@ CREATE TABLE IF NOT EXISTS loaded_files (
 
 -- Analytics (computed scores)
 CREATE TABLE IF NOT EXISTS player_scores (
+    id                  SERIAL PRIMARY KEY,
     player_id           INTEGER REFERENCES players(player_id),
     competition_id      INTEGER REFERENCES competitions(competition_id),
     season_id           INTEGER REFERENCES seasons(season_id),
@@ -301,9 +302,10 @@ CREATE TABLE IF NOT EXISTS player_scores (
     assists_p90         NUMERIC(6,3),
     xg_p90              NUMERIC(6,3),
     xa_p90              NUMERIC(6,3),
-    computed_at         TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (player_id, competition_id, season_id)
+    computed_at         TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_player_scores_pk
+    ON player_scores (player_id, COALESCE(competition_id, 0));
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_pms_player

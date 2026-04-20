@@ -134,3 +134,75 @@ def get_player_season_stats(player_id: int):
     """, (player_id,), as_dict=True)
 
     return {"data": rows}
+
+
+@router.get("/compare")
+def compare_players(
+    ids: str = Query(..., description="Comma-separated player IDs"),
+    competition: str = Query(None),
+    min_minutes: int = Query(450, ge=0),
+):
+    """Compare 2-5 players side by side with per-90 stats."""
+    try:
+        player_ids = [int(x.strip()) for x in ids.split(",")]
+    except ValueError:
+        return {"error": "ids must be comma-separated integers"}
+
+    if len(player_ids) < 2 or len(player_ids) > 5:
+        return {"error": "Provide 2-5 player IDs"}
+
+    placeholders = ",".join(["%s"] * len(player_ids))
+
+    conditions = [f"pms.player_id IN ({placeholders})"]
+    params = list(player_ids)
+    if competition:
+        conditions.append("pms.competition_name LIKE %s")
+        params.append(f"%{competition}%")
+
+    where = " AND ".join(conditions)
+
+    rows = query(f"""
+        SELECT p.player_id, p.name, p.position_group, p.primary_position,
+               COUNT(*) as matches,
+               SUM(pms.minutes_played) as minutes,
+               COALESCE(SUM(pms.goals), 0) as goals,
+               COALESCE(SUM(pms.assists), 0) as assists,
+               ROUND(SUM(pms.xg)::numeric, 2) as xg,
+               ROUND(SUM(pms.xa)::numeric, 2) as xa,
+               ROUND((SUM(pms.goals)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as goals_p90,
+               ROUND((SUM(pms.assists)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as assists_p90,
+               ROUND((SUM(pms.xg)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as xg_p90,
+               ROUND((SUM(pms.xa)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as xa_p90,
+               ROUND((SUM(pms.shots)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as shots_p90,
+               ROUND((SUM(pms.dribbles_successful)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as dribbles_p90,
+               ROUND((SUM(pms.progressive_runs)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as prog_runs_p90,
+               ROUND((SUM(pms.key_passes)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as key_passes_p90,
+               ROUND((SUM(pms.interceptions)::numeric / NULLIF(SUM(pms.minutes_played),0) * 90), 3) as interceptions_p90,
+               ROUND((SUM(pms.duels_won)::numeric / NULLIF(SUM(pms.duels),0) * 100), 1) as duels_won_pct,
+               ROUND((SUM(pms.passes_accurate)::numeric / NULLIF(SUM(pms.passes),0) * 100), 1) as pass_acc_pct
+        FROM player_match_stats pms
+        JOIN players p ON p.player_id = pms.player_id
+        WHERE {where}
+        GROUP BY p.player_id
+        HAVING SUM(pms.minutes_played) >= %s
+        ORDER BY p.player_id
+    """, params + [min_minutes], as_dict=True)
+
+    return {"data": rows}
+
+
+@router.get("/{player_id}/scores")
+def get_player_scores(player_id: int):
+    """Performance scores for a player across competitions."""
+    rows = query("""
+        SELECT ps.position_group, ps.minutes_total, ps.matches_total,
+               ps.performance_score, ps.percentile_rank,
+               ps.goals_p90, ps.assists_p90, ps.xg_p90, ps.xa_p90,
+               c.name as competition_name
+        FROM player_scores ps
+        LEFT JOIN competitions c ON c.competition_id = ps.competition_id
+        WHERE ps.player_id = %s
+        ORDER BY ps.performance_score DESC
+    """, (player_id,), as_dict=True)
+
+    return {"data": rows}
