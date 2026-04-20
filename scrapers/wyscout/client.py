@@ -195,38 +195,54 @@ def get_all_teams_for_season(competition_id: int,
 # ─────────────────────────────────────────────────
 
 def download_player_xlsx(wyscout_player_id: int,
-                         save_path: Path) -> bool:
+                         save_path: Path,
+                         max_retries: int = 3) -> bool:
     """
     Download player match stats xlsx.
     Returns True if successful.
     Skips if file already exists and is valid.
+    Retries on timeout/network errors.
     """
     if save_path.exists() and save_path.stat().st_size > 2000:
         logger.info(f'SKIP {save_path.name} — exists')
         return True
 
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    load_dotenv(override=True)
-    token = get_token()
 
-    r = _post(
-        f'/api/v1/match_stats/players/{wyscout_player_id}.xlsx',
-        params={
-            'token': token,
-            'groupId': os.getenv('WYSCOUT_GROUP_ID', '1059060'),
-            'subgroupId': os.getenv('WYSCOUT_SUBGROUP_ID', '93476'),
-        }
-    )
+    for attempt in range(1, max_retries + 1):
+        try:
+            load_dotenv(override=True)
+            token = get_token()
 
-    if r.status_code != 200 or len(r.content) < 2000:
-        logger.error(f'Failed player {wyscout_player_id}: '
-                     f'HTTP {r.status_code}, size {len(r.content)}')
-        return False
+            r = _post(
+                f'/api/v1/match_stats/players/{wyscout_player_id}.xlsx',
+                params={
+                    'token': token,
+                    'groupId': os.getenv('WYSCOUT_GROUP_ID', '1059060'),
+                    'subgroupId': os.getenv('WYSCOUT_SUBGROUP_ID', '93476'),
+                }
+            )
 
-    save_path.write_bytes(r.content)
-    logger.info(f'SAVED player {wyscout_player_id} → '
-                f'{save_path.name} ({len(r.content)//1024}KB)')
-    return True
+            if r.status_code != 200 or len(r.content) < 2000:
+                logger.error(f'Failed player {wyscout_player_id}: '
+                             f'HTTP {r.status_code}, size {len(r.content)}')
+                return False
+
+            save_path.write_bytes(r.content)
+            logger.info(f'SAVED player {wyscout_player_id} → '
+                        f'{save_path.name} ({len(r.content)//1024}KB)')
+            return True
+
+        except (requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError) as e:
+            logger.warning(f'Attempt {attempt}/{max_retries} failed for '
+                           f'{wyscout_player_id}: {e}')
+            if attempt < max_retries:
+                time.sleep(5 * attempt)
+            else:
+                logger.error(f'Gave up on player {wyscout_player_id} '
+                             f'after {max_retries} attempts')
+                return False
 
 
 def get_team_stats_json(wyscout_team_id: int,

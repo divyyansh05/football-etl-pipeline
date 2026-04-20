@@ -103,7 +103,9 @@ class WyscoutLoader:
                      position_group, primary_position)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (wyscout_id) DO UPDATE
-                    SET name=EXCLUDED.name
+                    SET name=EXCLUDED.name,
+                        position_group=COALESCE(EXCLUDED.position_group, players.position_group),
+                        primary_position=COALESCE(EXCLUDED.primary_position, players.primary_position)
                     RETURNING player_id
                 ''', (wyscout_id, name, norm,
                       kwargs.get('position_group'),
@@ -114,10 +116,12 @@ class WyscoutLoader:
 
     def load_player_xlsx(self, xlsx_path: Path,
                          wyscout_player_id: int,
-                         player_name: str) -> int:
+                         player_name: str,
+                         **player_kwargs) -> int:
         """
         Load one player xlsx into player_match_stats.
         Returns number of rows inserted.
+        player_kwargs forwarded to upsert_player (e.g. primary_position).
         """
         filename = xlsx_path.name
         if self.file_loaded(filename):
@@ -130,7 +134,7 @@ class WyscoutLoader:
 
         # Upsert player identity
         player_id = self.upsert_player(
-            wyscout_player_id, player_name)
+            wyscout_player_id, player_name, **player_kwargs)
 
         loaded = 0
         with get_conn() as conn:

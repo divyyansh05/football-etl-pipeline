@@ -5,6 +5,8 @@ Read-only API serving football data to all consumers.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routers import players, teams, stats
+
 app = FastAPI(
     title='football-data-platform',
     description='Multi-consumer football data API',
@@ -17,6 +19,10 @@ app.add_middleware(
     allow_methods=['GET'],
     allow_headers=['*'],
 )
+
+app.include_router(players.router)
+app.include_router(teams.router)
+app.include_router(stats.router)
 
 
 @app.get('/api/health')

@@ -44,6 +44,22 @@ BRONZE_DIR = Path('data/raw/wyscout/players')
 DISCOVERY_FILE = Path('data/raw/wyscout/discovery/players.json')
 
 
+def _position_group(pos: str) -> str:
+    """Map Wyscout position code to position group."""
+    if not pos:
+        return None
+    pos = pos.upper()
+    if pos == 'GK':
+        return 'GK'
+    if any(x in pos for x in ['CB', 'LB', 'RB', 'LWB', 'RWB']):
+        return 'DEF'
+    if any(x in pos for x in ['MF', 'DMF', 'AMF', 'CMF']):
+        return 'MID'
+    if any(x in pos for x in ['CF', 'WF', 'LW', 'RW', 'SS', 'FW']):
+        return 'FWD'
+    return 'MID'
+
+
 def load_discovery() -> dict:
     if DISCOVERY_FILE.exists():
         return json.loads(DISCOVERY_FILE.read_text())
@@ -113,13 +129,21 @@ def run(args):
                                 f'{player_name} ({player_id})')
                     continue
 
-                success = download_player_xlsx(player_id, xlsx_path)
-                if success:
-                    total_downloaded += 1
-                    # Load into DB
-                    rows = loader.load_player_xlsx(
-                        xlsx_path, player_id, player_name)
-                    total_loaded += rows
+                try:
+                    success = download_player_xlsx(player_id, xlsx_path)
+                    if success:
+                        total_downloaded += 1
+                        position = player.get('primaryPosition', '')
+                        pos_group = _position_group(position)
+                        rows = loader.load_player_xlsx(
+                            xlsx_path, player_id, player_name,
+                            primary_position=position,
+                            position_group=pos_group)
+                        total_loaded += rows
+                except Exception as e:
+                    logger.error(f'Error processing {player_name} '
+                                 f'({player_id}): {e}')
+                    continue
 
     logger.info(f'COMPLETE: {total_players} players discovered, '
                 f'{total_downloaded} downloaded, '
