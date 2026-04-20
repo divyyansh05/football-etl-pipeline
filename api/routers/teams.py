@@ -88,3 +88,28 @@ def get_team_matches(
     total = count_rows[0][0] if count_rows else 0
 
     return {"data": rows, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/{team_id}/season-stats")
+def get_team_season_stats(team_id: int):
+    """Aggregated stats per competition for a team."""
+    rows = query("""
+        SELECT competition_name,
+               COUNT(*) as matches,
+               SUM(CASE WHEN result='W' THEN 1 ELSE 0 END) as wins,
+               SUM(CASE WHEN result='D' THEN 1 ELSE 0 END) as draws,
+               SUM(CASE WHEN result='L' THEN 1 ELSE 0 END) as losses,
+               COALESCE(SUM(goals), 0) as goals_scored,
+               COALESCE(SUM(conceded_goals), 0) as goals_conceded,
+               ROUND(AVG(xg)::numeric, 2) as avg_xg,
+               ROUND(AVG(possession_pct)::numeric, 1) as avg_possession,
+               ROUND(AVG(ppda)::numeric, 2) as avg_ppda,
+               ROUND(AVG(passes_accurate)::numeric /
+                     NULLIF(AVG(passes)::numeric, 0) * 100, 1) as pass_acc_pct
+        FROM team_match_stats
+        WHERE team_id = %s
+        GROUP BY competition_name
+        ORDER BY matches DESC
+    """, (team_id,), as_dict=True)
+
+    return {"data": rows}
