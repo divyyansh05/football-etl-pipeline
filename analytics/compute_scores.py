@@ -203,6 +203,17 @@ def compute(min_minutes: int = 450):
                                 (SELECT competition_id FROM competitions
                                  WHERE name = %s LIMIT 1),
                                 NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (player_id, COALESCE(competition_id, 0))
+                        DO UPDATE SET
+                            performance_score=EXCLUDED.performance_score,
+                            percentile_rank=EXCLUDED.percentile_rank,
+                            minutes_total=EXCLUDED.minutes_total,
+                            matches_total=EXCLUDED.matches_total,
+                            goals_p90=EXCLUDED.goals_p90,
+                            assists_p90=EXCLUDED.assists_p90,
+                            xg_p90=EXCLUDED.xg_p90,
+                            xa_p90=EXCLUDED.xa_p90,
+                            computed_at=NOW()
                     """, (e['player_id'], e['competition'],
                           e['pos'], e['minutes'], e['matches'],
                           e['score'], e['percentile'],
