@@ -35,6 +35,14 @@ CREATE TABLE IF NOT EXISTS teams (
     created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Team ELO (Club ELO Integration)
+CREATE TABLE IF NOT EXISTS team_elo (
+    id                SERIAL PRIMARY KEY,
+    team_id           INTEGER REFERENCES teams(team_id) UNIQUE,
+    elo_rating        NUMERIC(6,2),
+    updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Players (canonical identity)
 CREATE TABLE IF NOT EXISTS players (
     player_id         SERIAL PRIMARY KEY,
@@ -176,8 +184,7 @@ CREATE TABLE IF NOT EXISTS player_match_stats (
     created_at              TIMESTAMPTZ DEFAULT NOW(),
     updated_at              TIMESTAMPTZ DEFAULT NOW(),
 
-    UNIQUE (wyscout_player_name, match_date,
-            competition_name, minutes_played)
+    UNIQUE (player_id, match_date, competition_name)
 );
 
 -- Team match stats

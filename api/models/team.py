@@ -27,3 +27,17 @@ class TeamMatchStat(BaseModel):
     ppda: Optional[float] = None
     duels: Optional[int] = None
     duels_won: Optional[int] = None
+
+
+class TeamSeasonAgg(BaseModel):
+    competition_name: str
+    matches: int
+    wins: int
+    draws: int
+    losses: int
+    goals_scored: int
+    goals_conceded: int
+    avg_xg: float
+    avg_possession: float
+    avg_ppda: float
+    pass_acc_pct: float

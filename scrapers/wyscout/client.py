@@ -90,6 +90,8 @@ def _post(path, params=None, retried=False):
         logger.warning('Token expired — refreshing...')
         refresh_token()
         return _post(path, params, retried=True)
+    if r.status_code != 200:
+        raise Exception(f"Wyscout API error {r.status_code}: {r.text}")
     return r
 
 
@@ -109,6 +111,8 @@ def _gql(query: str, variables: dict = None, retried=False):
     if r.status_code in (401, 403) and not retried:
         refresh_token()
         return _gql(query, variables, retried=True)
+    if r.status_code != 200:
+        raise Exception(f"Wyscout API error {r.status_code}: {r.text}")
     return r
 
 
@@ -116,22 +120,30 @@ def _gql(query: str, variables: dict = None, retried=False):
 # DISCOVERY METHODS
 # ─────────────────────────────────────────────────
 
-def get_season_id(competition_id: int) -> tuple:
-    """Returns (current_season_id, previous_season_id)."""
+def get_season_id(competition_id: int) -> list:
+    """Returns list of season IDs for the 5 most recent seasons (2021 to 2025)."""
     r = _gql('''
         query($compId: ID!) {
             competitions(id: [$compId]) {
-                currentSeason { id name }
-                previousSeason { id name }
+                seasons { id name }
             }
         }
     ''', {'compId': competition_id})
     data = r.json()['data']['competitions'][0]
-    curr = data['currentSeason']['id']
-    prev = data['previousSeason']['id']
+    seasons = data.get('seasons', [])
+    
+    target_years = ['2021', '2022', '2023', '2024', '2025']
+    valid_ids = []
+    
+    for s in seasons:
+        if any(year in s['name'] for year in target_years):
+            valid_ids.append(int(s['id']))
+            
+    # Remove duplicates but preserve order (highest to lowest IDs if naturally ordered, though dict keys retain insertion order)
+    valid_ids = list(dict.fromkeys(valid_ids))
     logger.info(f'Competition {competition_id}: '
-                f'current={curr}, previous={prev}')
-    return curr, prev
+                f'found {len(valid_ids)} target seasons -> {valid_ids}')
+    return valid_ids
 
 
 def get_all_players_for_season(competition_id: int,
@@ -177,17 +189,29 @@ def get_all_teams_for_season(competition_id: int,
     r = _gql('''
         query($seasonIds: [ID!]!) {
             teamsLeaderboard(
-                param: goal
+                param: points
                 seasonIds: $seasonIds
-                limit: 100
             ) {
                 teamId
-                name
+                team {
+                    name
+                }
             }
         }
     ''', {'seasonIds': [season_id]})
     data = r.json()
-    return data.get('data', {}).get('teamsLeaderboard', [])
+    if 'errors' in data:
+        logger.error(f'GraphQL error: {data["errors"]}')
+        return []
+        
+    teams = []
+    for t in data.get('data', {}).get('teamsLeaderboard', []):
+        if t.get('teamId'):
+            teams.append({
+                'teamId': int(t['teamId']),
+                'name': t.get('team', {}).get('name', f"team_{t['teamId']}")
+            })
+    return teams
 
 
 # ─────────────────────────────────────────────────

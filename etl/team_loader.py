@@ -113,6 +113,8 @@ class TeamLoader:
 
         team_id = self.upsert_team(wyscout_team_id, team_name)
         loaded = 0
+        skipped = 0
+        failed = 0
 
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -123,6 +125,7 @@ class TeamLoader:
                     match_date = match_info.get('date')
                     competition = match_info.get('competition', '')
                     if not match_date or not competition:
+                        skipped += 1
                         continue
 
                     is_home = (match_info.get('teamAId') == wyscout_team_id)
@@ -150,18 +153,22 @@ class TeamLoader:
                     ) + stat_values
 
                     try:
+                        cur.execute('SAVEPOINT row_sp')
                         cur.execute(INSERT_SQL, values)
+                        cur.execute('RELEASE SAVEPOINT row_sp')
                         loaded += 1
                     except Exception as e:
+                        cur.execute('ROLLBACK TO SAVEPOINT row_sp')
+                        failed += 1
                         logger.error(f'Row error for {team_name} '
                                      f'{match_date}: {e}')
-                        conn.rollback()
                         continue
 
             conn.commit()
 
         self.mark_loaded(filename, wyscout_team_id, loaded)
-        logger.info(f'LOADED {team_name}: {loaded} match rows')
+        logger.info(f'LOADED {team_name}: {loaded} match rows '
+                    f'(skipped={skipped}, failed={failed})')
         return loaded
 
 

@@ -32,7 +32,7 @@ def _position_group(pos: str) -> str:
         return 'MID'
     if any(x in pos for x in ['CF', 'WF', 'LW', 'RW', 'SS', 'FW']):
         return 'FWD'
-    return 'MID'
+    return None
 
 
 def backfill():

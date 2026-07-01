@@ -54,7 +54,11 @@ def _login_and_extract() -> str:
     import time as _time
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            executable_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            args=['--no-sandbox', '--disable-setuid-sandbox']
+        )
         context = browser.new_context()
         page = context.new_page()
 
@@ -63,14 +67,22 @@ def _login_and_extract() -> str:
 
         # Hudl Auth0 login — two-step flow at identity.hudl.com
         # Step 1: Enter email/username and click Continue
-        page.fill('input[name="username"]', email, timeout=10000)
-        page.click('button:has-text("Continue")')
+        try:
+            page.fill('input.u-input', email, timeout=20000, force=True)
+        except Exception:
+            # Fallback: force it via raw JavaScript
+            page.evaluate(f"document.querySelector('input.u-input').value = '{email}'")
+        
+        page.click('button:has-text("Continue")', force=True)
 
         # Step 2: Wait for password field to become visible
-        page.wait_for_selector(
-            'input[type="password"]:visible', timeout=10000)
-        page.fill('input[type="password"]', password)
-        page.click('button:has-text("Continue")')
+        page.wait_for_selector('input[type="password"]', timeout=20000)
+        try:
+            page.fill('input[type="password"]', password, force=True)
+        except Exception:
+            page.evaluate(f"document.querySelector('input[type=\"password\"]').value = '{password}'")
+            
+        page.click('button:has-text("Continue")', force=True)
 
         # Wait for redirect back to wyscout app
         page.wait_for_url('**/app/**', timeout=30000)
@@ -82,17 +94,31 @@ def _login_and_extract() -> str:
         if force_btn:
             logger.info('Multiple access detected — forcing login...')
             force_btn.click()
-            _time.sleep(5)
+            # Wait for networkidle after force login
             page.wait_for_load_state('networkidle')
 
-        cookies = context.cookies()
-        cookie_dict = {c['name']: c['value'] for c in cookies}
+        # Poll for aengine_dtk cookie — Wyscout sets it asynchronously via JS
+        # after session initialization, so networkidle is not sufficient.
+        token = None
+        cookie_dict = {}
+        logger.info('Polling for aengine_dtk cookie (up to 30s)...')
+        for attempt in range(30):
+            _time.sleep(1)
+            cookies = context.cookies()
+            cookie_dict = {c['name']: c['value'] for c in cookies}
+            token = cookie_dict.get('aengine_dtk')
+            if token:
+                logger.info(f'aengine_dtk found after {attempt + 1}s')
+                break
+            if attempt % 5 == 4:
+                logger.info(f'  Still waiting... ({attempt + 1}s elapsed). '
+                            f'Available: {list(cookie_dict.keys())}')
+
         browser.close()
 
-    token = cookie_dict.get('aengine_dtk')
     if not token:
         raise ValueError(
-            f'aengine_dtk not found. Available cookies: '
+            f'aengine_dtk not found after 30s. Available cookies: '
             f'{list(cookie_dict.keys())}')
 
     # Save to .env and cache

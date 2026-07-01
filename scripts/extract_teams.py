@@ -56,8 +56,7 @@ def run(args):
         logger.info(f'Processing: {comp_name} (id={comp_id})')
 
         try:
-            curr_season, prev_season = get_season_id(comp_id)
-            season_ids = [curr_season, prev_season]
+            season_ids = get_season_id(comp_id)
         except Exception as e:
             logger.error(f'Failed seasons for {comp_name}: {e}')
             continue

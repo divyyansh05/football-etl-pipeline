@@ -4,6 +4,12 @@
 A standalone football data platform. Single DB, multiple consumers.
 This is the FINAL backend. Built once. No migrations to other repos.
 
+## Governance Model
+- **Technical Director (TD):** Antigravity IDE agent — makes ALL decisions
+- **Execution Agents:** Claude Code, Cursor, etc. — write code per TD directives
+- **Rule:** No execution agent may make architectural decisions or modify
+  files outside their assigned scope. See `.gemini/DELEGATION_PLAYBOOK.md`
+
 ## Read These Before Every Session
   .claude/CLAUDE.md          — project state, confirmed IDs, endpoints
   .claude/rules/data.md      — data source rules and column naming
@@ -65,9 +71,19 @@ This is the FINAL backend. Built once. No migrations to other repos.
   - No authentication on the API (consumers handle their own auth)
 
 ## Current Build Status
-  [UPDATE THIS AFTER EACH SESSION]
-  Foundation: complete
-  Database schema: pending
-  Token manager: pending
-  Extraction script: pending
-  First data load: pending
+  Last updated: 2026-04-21
+  Foundation:           ✅ COMPLETE
+  Database schema:      ✅ COMPLETE (8 tables, indexes, constraints)
+  Token manager:        ✅ COMPLETE (auto-login, cookie extraction)
+  Wyscout client:       ✅ COMPLETE (GraphQL + REST, rate limiting)
+  Parser:               ✅ COMPLETE (439-col mapping, GK-aware)
+  Player ETL loader:    ✅ COMPLETE (SAVEPOINT tx safety)
+  Team ETL loader:      ✅ COMPLETE (SAVEPOINT tx safety)
+  Player extraction:    ⚠️ PARTIAL (1,860 players, 261K match rows loaded)
+  Team extraction:      ⚠️ STARTED (1 team file, 434 match rows)
+  Post-extraction:      ✅ COMPLETE (competitions, positions, scores)
+  Analytics scoring:    ✅ COMPLETE (percentile-based, position-aware)
+  API endpoints:        ✅ COMPLETE (12 endpoints, /api/v1 prefix)
+  Auto-pipeline:        ✅ COMPLETE (nohup daemon, resume-safe)
+  Tests:                ❌ NOT STARTED
+  Secondary enrichment: ❌ NOT STARTED

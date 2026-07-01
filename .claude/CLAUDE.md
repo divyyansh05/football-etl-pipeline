@@ -1,5 +1,20 @@
 # football-data-platform — Project Memory
 
+## Agent Governance
+This project is managed by a Technical Director (TD) agent in Antigravity IDE.
+If you are Claude Code, Cursor, or any execution agent:
+1. You are executing a SCOPED TASK given to you by the TD
+2. Do NOT make architectural decisions — ask the TD
+3. Do NOT modify files outside your assigned scope
+4. Do NOT install new dependencies without explicit approval
+5. Follow the task prompt exactly — no "improvements" beyond scope
+6. Report results in: CHANGED / TESTED / COUNTS / ISSUES format
+7. If ambiguous, STOP and say "Need TD decision on: [question]"
+
+Agent instructions: `.gemini/agents/`
+Delegation playbook: `.gemini/DELEGATION_PLAYBOOK.md`
+TD context: `.gemini/TD_CONTEXT.md`
+
 ## What This Is
 A standalone, multi-consumer football data platform.
 Single source of truth for all football data needs.

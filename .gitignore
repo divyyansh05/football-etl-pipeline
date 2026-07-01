@@ -3,9 +3,11 @@
 __pycache__/
 *.pyc
 *.pyo
-data/raw/
-data/wyscout_session.json
-scrapers/wyscout/.token_cache
+data/
 logs/
 *.log
 .DS_Store
+.gemini/
+.vscode/
+scrapers/wyscout/.token_cache
+scripts/scratch/

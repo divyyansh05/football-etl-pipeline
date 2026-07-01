@@ -57,7 +57,7 @@ def _position_group(pos: str) -> str:
         return 'MID'
     if any(x in pos for x in ['CF', 'WF', 'LW', 'RW', 'SS', 'FW']):
         return 'FWD'
-    return 'MID'
+    return None
 
 
 def load_discovery() -> dict:
@@ -87,10 +87,9 @@ def run(args):
     for comp_name, comp_id in competitions.items():
         logger.info(f'Processing: {comp_name} (id={comp_id})')
 
-        # Get current and previous seasons
+        # Get target seasons
         try:
-            curr_season, prev_season = get_season_id(comp_id)
-            season_ids = [curr_season, prev_season]
+            season_ids = get_season_id(comp_id)
         except Exception as e:
             logger.error(f'Failed to get seasons for {comp_name}: {e}')
             continue
